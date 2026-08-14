@@ -1,6 +1,6 @@
-# SYTAMA — Sistem Akademik Widyatama
+# SYTAMA — Sistem Akademik OBE
 
-Sistem manajemen akademik berbasis OBE (Outcome-Based Education) untuk Universitas Widyatama, dibangun sebagai monorepo dengan SSO menggunakan Authentik.
+Sistem manajemen akademik berbasis OBE (Outcome-Based Education), dibangun sebagai monorepo dengan SSO menggunakan Authentik.
 
 ## Arsitektur
 
