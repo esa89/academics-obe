@@ -36,7 +36,7 @@ akademik-monorepo-widyatama/
 ---
 
 ## Menjalankan Pertama Kali
-
+ 
 ### Langkah 1 — Siapkan environment file
 
 File `.env` sudah tersedia di `infra/docker/.env` dengan nilai default untuk development. Tidak perlu diubah.

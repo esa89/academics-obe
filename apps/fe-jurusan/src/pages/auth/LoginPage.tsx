@@ -49,7 +49,7 @@ const ANNOUNCEMENTS = [
 
 // ── Keunggulan IF Widyatama ────────────────────────────────────────────────
 const KEUNGGULAN = [
-  { icon: <Award size={18} />, title: 'Akreditasi BAIK SEKALI', desc: 'Diakui oleh BAN-PT dengan peringkat Baik Sekali' },
+  { icon: <Award size={18} />, title: 'Akreditasi UNGGUL', desc: 'Diakui oleh BAN-PT dengan peringkat Unggul' },
   { icon: <BookOpen size={18} />, title: 'Kurikulum OBE', desc: '12 CPL terstruktur sesuai standar KKNI & SN-Dikti' },
   { icon: <Cpu size={18} />, title: 'Lab Komputer Modern', desc: '5 laboratorium lengkap dengan spesifikasi terkini' },
   { icon: <Users size={18} />, title: 'Dosen Berpengalaman', desc: 'Tenaga pengajar S2/S3 berpengalaman di industri & riset' },

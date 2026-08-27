@@ -8,6 +8,7 @@ import { createPaginatedResult, PaginatedResult } from '../../common/dto/paginat
 
 export interface StudentMapped {
   id: string;
+  tenantId: string;
   nim: string;
   name: string;
   birthPlace: string | null;
@@ -43,7 +44,7 @@ const studentInclude = {
 export class StudentRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: QueryStudentDto): Promise<PaginatedResult<StudentMapped>> {
+  async findAll(tenantId: string, query: QueryStudentDto): Promise<PaginatedResult<StudentMapped>> {
     const {
       page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc',
       search, facultyId, studyProgramId, curriculumId, entryYear,
@@ -51,12 +52,16 @@ export class StudentRepository {
     } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.StudentWhereInput = {};
+    const where: Prisma.StudentWhereInput = { tenantId };
     if (search) {
-      where.OR = [
-        { nim:   { contains: search, mode: 'insensitive' } },
-        { name:  { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { nim:   { contains: search, mode: 'insensitive' } },
+            { name:  { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
     if (facultyId)      where.facultyId = facultyId;
@@ -80,17 +85,24 @@ export class StudentRepository {
     return createPaginatedResult(data.map((i) => this.mapToResponse(i)), total, page, limit);
   }
 
-  async findById(id: string): Promise<StudentMapped | null> {
-    const item = await this.prisma.student.findUnique({
-      where: { id },
+  async findById(tenantId: string, id: string): Promise<StudentMapped | null> {
+    const item = await this.prisma.student.findFirst({
+      where: { id, tenantId },
       include: studentInclude,
     });
     return item ? this.mapToResponse(item) : null;
   }
 
-  async create(data: CreateStudentDto) {
+  async findByNim(tenantId: string, nim: string) {
+    return this.prisma.student.findUnique({
+      where: { tenantId_nim: { tenantId, nim } },
+    });
+  }
+
+  async create(tenantId: string, data: CreateStudentDto) {
     return this.prisma.student.create({
       data: {
+        tenantId,
         nim:               data.nim,
         name:              data.name,
         birthPlace:        data.birthPlace ?? null,
@@ -112,7 +124,7 @@ export class StudentRepository {
     });
   }
 
-  async update(id: string, data: UpdateStudentDto) {
+  async update(tenantId: string, id: string, data: UpdateStudentDto) {
     const u: Prisma.StudentUpdateInput = {};
     if (data.nim !== undefined)           u.nim = data.nim;
     if (data.name !== undefined)          u.name = data.name;
@@ -134,32 +146,35 @@ export class StudentRepository {
     return this.prisma.student.update({ where: { id }, data: u, include: studentInclude });
   }
 
-  async remove(id: string) {
+  async remove(tenantId: string, id: string) {
     return this.prisma.student.delete({ where: { id } });
   }
 
-  async existsByNim(nim: string, excludeId?: string): Promise<boolean> {
+  async existsByNim(tenantId: string, nim: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.student.count({
-      where: { nim, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      where: { tenantId, nim, ...(excludeId ? { id: { not: excludeId } } : {}) },
     });
     return count > 0;
   }
 
-  async existsByEmail(email: string, excludeId?: string): Promise<boolean> {
+  async existsByEmail(tenantId: string, email: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.student.count({
-      where: { email, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      where: { tenantId, email, ...(excludeId ? { id: { not: excludeId } } : {}) },
     });
     return count > 0;
   }
 
-  async facultyExists(id: string)         { return !!(await this.prisma.faculty.count({ where: { id } })); }
-  async studyProgramExists(id: string)    { return !!(await this.prisma.studyProgram.count({ where: { id } })); }
-  async curriculumExists(id: string)      { return !!(await this.prisma.curriculum.count({ where: { id } })); }
-  async academicSemesterExists(id: string){ return !!(await this.prisma.academicSemester.count({ where: { id } })); }
+  async facultyExists(tenantId: string, id: string)         { return !!(await this.prisma.faculty.count({ where: { id, tenantId } })); }
+  async studyProgramExists(tenantId: string, id: string)    { return !!(await this.prisma.studyProgram.count({ where: { id, tenantId } })); }
+  async curriculumExists(tenantId: string, id: string)      { return !!(await this.prisma.curriculum.count({ where: { id, tenantId } })); }
+  async academicSemesterExists(tenantId: string, id: string){ return !!(await this.prisma.academicSemester.count({ where: { id, tenantId } })); }
 
-  async getTranscript(studentId: string) {
+  async getTranscript(tenantId: string, studentId: string) {
     const enrollments = await this.prisma.classStudent.findMany({
-      where: { studentId },
+      where: {
+        studentId,
+        student: { tenantId },
+      },
       include: {
         class: {
           include: {
@@ -210,7 +225,9 @@ export class StudentRepository {
   }
 
   mapToResponse(item: {
-    id: string; nim: string; name: string; birthPlace: string | null;
+    id: string;
+    tenantId: string;
+    nim: string; name: string; birthPlace: string | null;
     birthDate: Date | null; gender: string; agama: string | null; email: string | null;
     phoneNumber: string | null; facultyId: string; studyProgramId: string;
     curriculumId: string | null; academicSemesterId: string | null;
@@ -222,7 +239,9 @@ export class StudentRepository {
     academicSemester: { id: string; code: string; name: string } | null;
   }): StudentMapped {
     return {
-      id: item.id, nim: item.nim, name: item.name,
+      id: item.id,
+      tenantId: item.tenantId,
+      nim: item.nim, name: item.name,
       birthPlace: item.birthPlace, birthDate: item.birthDate,
       gender: item.gender, agama: item.agama, email: item.email, phoneNumber: item.phoneNumber,
       facultyId: item.facultyId, studyProgramId: item.studyProgramId,

@@ -12,6 +12,7 @@ type FacultyWithCount = Prisma.FacultyGetPayload<{
 
 export interface FacultyMapped {
   id: string;
+  tenantId: string;
   code: string;
   name: string;
   description: string | null;
@@ -25,16 +26,20 @@ export interface FacultyMapped {
 export class FacultyRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: QueryFacultyDto): Promise<PaginatedResult<FacultyMapped>> {
+  async findAll(tenantId: string, query: QueryFacultyDto): Promise<PaginatedResult<FacultyMapped>> {
     const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc', search, isActive } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.FacultyWhereInput = {};
+    const where: Prisma.FacultyWhereInput = { tenantId };
 
     if (search) {
-      where.OR = [
-        { code: { contains: search, mode: 'insensitive' } },
-        { name: { contains: search, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { code: { contains: search, mode: 'insensitive' } },
+            { name: { contains: search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
 
@@ -61,9 +66,9 @@ export class FacultyRepository {
     return createPaginatedResult(mapped, total, page, limit);
   }
 
-  async findById(id: string): Promise<FacultyMapped | null> {
-    const item = await this.prisma.faculty.findUnique({
-      where: { id },
+  async findById(tenantId: string, id: string): Promise<FacultyMapped | null> {
+    const item = await this.prisma.faculty.findFirst({
+      where: { id, tenantId },
       include: {
         _count: {
           select: { studyPrograms: true },
@@ -74,15 +79,18 @@ export class FacultyRepository {
     return item ? this.mapToResponse(item) : null;
   }
 
-  async findByCode(code: string) {
+  async findByCode(tenantId: string, code: string) {
     return this.prisma.faculty.findUnique({
-      where: { code },
+      where: {
+        tenantId_code: { tenantId, code },
+      },
     });
   }
 
-  async create(data: CreateFacultyDto) {
+  async create(tenantId: string, data: CreateFacultyDto) {
     return this.prisma.faculty.create({
       data: {
+        tenantId,
         code: data.code,
         name: data.name,
         description: data.description,
@@ -91,7 +99,7 @@ export class FacultyRepository {
     });
   }
 
-  async update(id: string, data: UpdateFacultyDto) {
+  async update(tenantId: string, id: string, data: UpdateFacultyDto) {
     const updateData: Prisma.FacultyUpdateInput = {};
 
     if (data.code !== undefined) updateData.code = data.code;
@@ -105,15 +113,19 @@ export class FacultyRepository {
     });
   }
 
-  async remove(id: string) {
+  async remove(tenantId: string, id: string) {
     return this.prisma.faculty.delete({
       where: { id },
     });
   }
 
-  async existsByCode(code: string): Promise<boolean> {
+  async existsByCode(tenantId: string, code: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.faculty.count({
-      where: { code },
+      where: {
+        tenantId,
+        code,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
     });
     return count > 0;
   }
@@ -121,6 +133,7 @@ export class FacultyRepository {
   private mapToResponse(item: FacultyWithCount): FacultyMapped {
     return {
       id: item.id,
+      tenantId: item.tenantId,
       code: item.code,
       name: item.name,
       description: item.description,

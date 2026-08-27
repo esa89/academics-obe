@@ -8,6 +8,7 @@ import { createPaginatedResult, PaginatedResult } from '../../common/dto/paginat
 
 export interface CourseMapped {
   id: string;
+  tenantId: string;
   curriculumId: string | null;
   facultyId: string | null;
   code: string;
@@ -38,18 +39,22 @@ const courseInclude = {
 export class CourseRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: QueryCourseDto): Promise<PaginatedResult<CourseMapped>> {
+  async findAll(tenantId: string, query: QueryCourseDto): Promise<PaginatedResult<CourseMapped>> {
     const {
       page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc',
       search, curriculumId, semester, isActive,
     } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.CourseWhereInput = {};
+    const where: Prisma.CourseWhereInput = { tenantId };
     if (search) {
-      where.OR = [
-        { code: { contains: search, mode: 'insensitive' } },
-        { name: { contains: search, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { code: { contains: search, mode: 'insensitive' } },
+            { name: { contains: search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
     if (curriculumId !== undefined) where.curriculumId = curriculumId;
@@ -68,21 +73,24 @@ export class CourseRepository {
     return createPaginatedResult(data.map((i) => this.mapToResponse(i)), total, page, limit);
   }
 
-  async findById(id: string): Promise<CourseMapped | null> {
-    const item = await this.prisma.course.findUnique({
-      where: { id },
+  async findById(tenantId: string, id: string): Promise<CourseMapped | null> {
+    const item = await this.prisma.course.findFirst({
+      where: { id, tenantId },
       include: courseInclude,
     });
     return item ? this.mapToResponse(item) : null;
   }
 
-  async findByCode(code: string) {
-    return this.prisma.course.findUnique({ where: { code } });
+  async findByCode(tenantId: string, code: string) {
+    return this.prisma.course.findUnique({
+      where: { tenantId_code: { tenantId, code } },
+    });
   }
 
-  async create(data: CreateCourseDto) {
+  async create(tenantId: string, data: CreateCourseDto) {
     return this.prisma.course.create({
       data: {
+        tenantId,
         curriculumId: data.curriculumId ?? null,
         facultyId: data.facultyId ?? null,
         code: data.code,
@@ -96,7 +104,7 @@ export class CourseRepository {
     });
   }
 
-  async update(id: string, data: UpdateCourseDto) {
+  async update(tenantId: string, id: string, data: UpdateCourseDto) {
     const updateData: Prisma.CourseUpdateInput = {};
 
     if (data.curriculumId !== undefined) {
@@ -123,29 +131,34 @@ export class CourseRepository {
     });
   }
 
-  async remove(id: string) {
+  async remove(tenantId: string, id: string) {
     return this.prisma.course.delete({ where: { id } });
   }
 
-  async existsByCode(code: string, excludeId?: string): Promise<boolean> {
+  async existsByCode(tenantId: string, code: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.course.count({
-      where: { code, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      where: {
+        tenantId,
+        code,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
     });
     return count > 0;
   }
 
-  async curriculumExists(id: string): Promise<boolean> {
-    const count = await this.prisma.curriculum.count({ where: { id } });
+  async curriculumExists(tenantId: string, id: string): Promise<boolean> {
+    const count = await this.prisma.curriculum.count({ where: { id, tenantId } });
     return count > 0;
   }
 
-  async facultyExists(id: string): Promise<boolean> {
-    const count = await this.prisma.faculty.count({ where: { id } });
+  async facultyExists(tenantId: string, id: string): Promise<boolean> {
+    const count = await this.prisma.faculty.count({ where: { id, tenantId } });
     return count > 0;
   }
 
   mapToResponse(item: {
     id: string;
+    tenantId: string;
     curriculumId: string | null;
     facultyId: string | null;
     code: string;
@@ -161,6 +174,7 @@ export class CourseRepository {
   }): CourseMapped {
     return {
       id: item.id,
+      tenantId: item.tenantId,
       curriculumId: item.curriculumId,
       facultyId: item.facultyId,
       code: item.code,

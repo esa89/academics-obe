@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
-  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { AcademicSemesterRepository } from './academic-semester.repository';
@@ -16,23 +15,14 @@ export class AcademicSemesterService {
 
   constructor(private readonly repository: AcademicSemesterRepository) {}
 
-  private validateDates(startDate: string, endDate: string) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-
-    if (start >= end) {
-      throw new BadRequestException('startDate must be before endDate');
-    }
+  async findAll(tenantId: string, query: QueryAcademicSemesterDto) {
+    this.logger.log(`[Tenant ${tenantId}] Fetching Academic Semesters: ${JSON.stringify(query)}`);
+    return this.repository.findAll(tenantId, query);
   }
 
-  async findAll(query: QueryAcademicSemesterDto) {
-    this.logger.log(`Fetching Academic Semesters with query: ${JSON.stringify(query)}`);
-    return this.repository.findAll(query);
-  }
-
-  async findOne(id: string) {
-    this.logger.log(`Fetching Academic Semester by id: ${id}`);
-    const item = await this.repository.findById(id);
+  async findOne(tenantId: string, id: string) {
+    this.logger.log(`[Tenant ${tenantId}] Fetching Academic Semester by id: ${id}`);
+    const item = await this.repository.findById(tenantId, id);
 
     if (!item) {
       throw new NotFoundException(`Academic Semester with id '${id}' not found`);
@@ -41,72 +31,77 @@ export class AcademicSemesterService {
     return item;
   }
 
-  async create(data: CreateAcademicSemesterDto) {
-    this.logger.log(`Creating Academic Semester with code: ${data.code}`);
+  async findCurrent(tenantId: string) {
+    this.logger.log(`[Tenant ${tenantId}] Fetching current Academic Semester`);
+    const item = await this.repository.findCurrent(tenantId);
 
-    this.validateDates(data.startDate, data.endDate);
+    if (!item) {
+      throw new NotFoundException('Current Academic Semester not found');
+    }
 
-    const exists = await this.repository.existsByCode(data.code);
+    return item;
+  }
+
+  async create(tenantId: string, data: CreateAcademicSemesterDto) {
+    this.logger.log(`[Tenant ${tenantId}] Creating Academic Semester: ${data.code}`);
+
+    const exists = await this.repository.existsByCode(tenantId, data.code);
     if (exists) {
       throw new ConflictException(
-        `Academic Semester with code '${data.code}' already exists`,
+        `Academic Semester with code '${data.code}' already exists in this tenant`,
       );
     }
 
-    const item = await this.repository.create(data);
-    this.logger.log(`Academic Semester created with id: ${item.id}`);
-    return this.repository.mapToResponse(item);
+    const item = await this.repository.create(tenantId, data);
+    this.logger.log(`[Tenant ${tenantId}] Academic Semester created: ${item.id}`);
+    return item;
   }
 
-  async update(id: string, data: UpdateAcademicSemesterDto) {
-    this.logger.log(`Updating Academic Semester id: ${id}`);
+  async update(tenantId: string, id: string, data: UpdateAcademicSemesterDto) {
+    this.logger.log(`[Tenant ${tenantId}] Updating Academic Semester id: ${id}`);
 
-    const existing = await this.repository.findById(id);
+    const existing = await this.repository.findById(tenantId, id);
     if (!existing) {
       throw new NotFoundException(`Academic Semester with id '${id}' not found`);
     }
 
     if (data.code && data.code !== existing.code) {
-      const codeExists = await this.repository.existsByCode(data.code);
+      const codeExists = await this.repository.existsByCode(tenantId, data.code, id);
       if (codeExists) {
         throw new ConflictException(
-          `Academic Semester with code '${data.code}' already exists`,
+          `Academic Semester with code '${data.code}' already exists in this tenant`,
         );
       }
     }
 
-    const startDate = data.startDate ?? existing.startDate.toISOString().split('T')[0];
-    const endDate = data.endDate ?? existing.endDate.toISOString().split('T')[0];
-    this.validateDates(startDate, endDate);
-
-    const item = await this.repository.update(id, data);
-    this.logger.log(`Academic Semester updated: ${item.id}`);
-    return this.repository.mapToResponse(item);
-  }
-
-  async remove(id: string) {
-    this.logger.log(`Deleting Academic Semester id: ${id}`);
-
-    const existing = await this.repository.findById(id);
-    if (!existing) {
-      throw new NotFoundException(`Academic Semester with id '${id}' not found`);
-    }
-
-    const item = await this.repository.remove(id);
-    this.logger.log(`Academic Semester deleted: ${item.id}`);
+    const item = await this.repository.update(tenantId, id, data);
+    this.logger.log(`[Tenant ${tenantId}] Academic Semester updated: ${item.id}`);
     return item;
   }
 
-  async setCurrent(id: string) {
-    this.logger.log(`Setting Academic Semester ${id} as current`);
+  async remove(tenantId: string, id: string) {
+    this.logger.log(`[Tenant ${tenantId}] Deleting Academic Semester id: ${id}`);
 
-    const existing = await this.repository.findById(id);
+    const existing = await this.repository.findById(tenantId, id);
     if (!existing) {
       throw new NotFoundException(`Academic Semester with id '${id}' not found`);
     }
 
-    const item = await this.repository.setCurrent(id);
-    this.logger.log(`Academic Semester ${id} is now current`);
-    return this.repository.mapToResponse(item);
+    const item = await this.repository.remove(tenantId, id);
+    this.logger.log(`[Tenant ${tenantId}] Academic Semester deleted: ${item.id}`);
+    return item;
+  }
+
+  async setCurrent(tenantId: string, id: string) {
+    this.logger.log(`[Tenant ${tenantId}] Setting Academic Semester as current: ${id}`);
+
+    const existing = await this.repository.findById(tenantId, id);
+    if (!existing) {
+      throw new NotFoundException(`Academic Semester with id '${id}' not found`);
+    }
+
+    const item = await this.repository.setCurrent(tenantId, id);
+    this.logger.log(`[Tenant ${tenantId}] Academic Semester set as current: ${item.id}`);
+    return item;
   }
 }

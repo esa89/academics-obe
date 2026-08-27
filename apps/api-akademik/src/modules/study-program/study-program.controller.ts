@@ -16,6 +16,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiQuery,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { StudyProgramService } from './study-program.service';
 import { CreateStudyProgramDto } from './dto/create-study-program.dto';
@@ -23,9 +24,11 @@ import { UpdateStudyProgramDto } from './dto/update-study-program.dto';
 import { QueryStudyProgramDto } from './dto/query-study-program.dto';
 import { StudyProgramResponseDto } from './dto/study-program-response.dto';
 import { Degree } from './enums/degree.enum';
+import { TenantId } from '../../common/decorators/tenant.decorator';
 
 @ApiTags('Study Programs')
 @ApiBearerAuth()
+@ApiHeader({ name: 'x-tenant-id', required: false, description: 'Tenant UUID or slug' })
 @Controller('study-programs')
 export class StudyProgramController {
   constructor(private readonly service: StudyProgramService) {}
@@ -41,18 +44,18 @@ export class StudyProgramController {
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (max 100)' })
   @ApiQuery({ name: 'search', required: false, type: String, description: 'Search by code or name' })
-  @ApiQuery({ name: 'facultyId', required: false, type: String, description: 'Filter by Faculty ID' })
+  @ApiQuery({ name: 'facultyId', required: false, type: String, description: 'Filter by faculty ID' })
   @ApiQuery({ name: 'degree', required: false, enum: Degree, description: 'Filter by degree' })
   @ApiQuery({ name: 'accreditation', required: false, type: String, description: 'Filter by accreditation' })
   @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active status' })
-  @ApiQuery({ name: 'sortBy', required: false, type: String, description: 'Sort field (code, name, degree, accreditation, createdAt)' })
+  @ApiQuery({ name: 'sortBy', required: false, type: String, description: 'Sort field' })
   @ApiQuery({ name: 'sortOrder', required: false, type: String, description: 'Sort direction (asc, desc)' })
-  async findAll(@Query() query: QueryStudyProgramDto) {
-    return this.service.findAll(query);
+  async findAll(@TenantId() tenantId: string, @Query() query: QueryStudyProgramDto) {
+    return this.service.findAll(tenantId, query);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get Study Program by ID with Faculty' })
+  @ApiOperation({ summary: 'Get Study Program by ID' })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Study Program retrieved successfully',
@@ -62,8 +65,11 @@ export class StudyProgramController {
     status: HttpStatus.NOT_FOUND,
     description: 'Study Program not found',
   })
-  async findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.service.findOne(id);
+  async findOne(
+    @TenantId() tenantId: string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.service.findOne(tenantId, id);
   }
 
   @Post()
@@ -75,14 +81,14 @@ export class StudyProgramController {
   })
   @ApiResponse({
     status: HttpStatus.CONFLICT,
-    description: 'Study Program code already exists',
+    description: 'Study Program code already exists in this tenant',
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
-    description: 'Validation error or Faculty not found',
+    description: 'Validation error or invalid facultyId',
   })
-  async create(@Body() data: CreateStudyProgramDto) {
-    return this.service.create(data);
+  async create(@TenantId() tenantId: string, @Body() data: CreateStudyProgramDto) {
+    return this.service.create(tenantId, data);
   }
 
   @Put(':id')
@@ -98,17 +104,18 @@ export class StudyProgramController {
   })
   @ApiResponse({
     status: HttpStatus.CONFLICT,
-    description: 'Study Program code already exists',
+    description: 'Study Program code already exists in this tenant',
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
-    description: 'Faculty not found',
+    description: 'Validation error or invalid facultyId',
   })
   async update(
+    @TenantId() tenantId: string,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() data: UpdateStudyProgramDto,
   ) {
-    return this.service.update(id, data);
+    return this.service.update(tenantId, id, data);
   }
 
   @Delete(':id')
@@ -122,7 +129,10 @@ export class StudyProgramController {
     status: HttpStatus.NOT_FOUND,
     description: 'Study Program not found',
   })
-  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.service.remove(id);
+  async remove(
+    @TenantId() tenantId: string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.service.remove(tenantId, id);
   }
 }

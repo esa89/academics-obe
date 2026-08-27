@@ -8,6 +8,7 @@ import { createPaginatedResult, PaginatedResult } from '../../common/dto/paginat
 
 export interface LecturerMapped {
   id: string;
+  tenantId: string;
   nidn: string;
   nrk: string;
   name: string;
@@ -38,7 +39,7 @@ const lecturerInclude = {
 export class LecturerRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: QueryLecturerDto): Promise<PaginatedResult<LecturerMapped>> {
+  async findAll(tenantId: string, query: QueryLecturerDto): Promise<PaginatedResult<LecturerMapped>> {
     const {
       page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc',
       search, facultyId, studyProgramId, lastEducation, academicPosition,
@@ -46,14 +47,18 @@ export class LecturerRepository {
     } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.LecturerWhereInput = {};
+    const where: Prisma.LecturerWhereInput = { tenantId };
     if (search) {
-      where.OR = [
-        { nidn: { contains: search, mode: 'insensitive' } },
-        { nrk: { contains: search, mode: 'insensitive' } },
-        { name: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { identityUsername: { contains: search, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { nidn: { contains: search, mode: 'insensitive' } },
+            { nrk: { contains: search, mode: 'insensitive' } },
+            { name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+            { identityUsername: { contains: search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
     if (facultyId) where.facultyId = facultyId;
@@ -75,33 +80,42 @@ export class LecturerRepository {
     return createPaginatedResult(data.map((i) => this.mapToResponse(i)), total, page, limit);
   }
 
-  async findById(id: string): Promise<LecturerMapped | null> {
-    const item = await this.prisma.lecturer.findUnique({
-      where: { id },
+  async findById(tenantId: string, id: string): Promise<LecturerMapped | null> {
+    const item = await this.prisma.lecturer.findFirst({
+      where: { id, tenantId },
       include: lecturerInclude,
     });
     return item ? this.mapToResponse(item) : null;
   }
 
-  async findByNidn(nidn: string) {
-    return this.prisma.lecturer.findUnique({ where: { nidn } });
+  async findByNidn(tenantId: string, nidn: string) {
+    return this.prisma.lecturer.findUnique({
+      where: { tenantId_nidn: { tenantId, nidn } },
+    });
   }
 
-  async findByNrk(nrk: string) {
-    return this.prisma.lecturer.findUnique({ where: { nrk } });
+  async findByNrk(tenantId: string, nrk: string) {
+    return this.prisma.lecturer.findUnique({
+      where: { tenantId_nrk: { tenantId, nrk } },
+    });
   }
 
-  async findByEmail(email: string) {
-    return this.prisma.lecturer.findUnique({ where: { email } });
+  async findByEmail(tenantId: string, email: string) {
+    return this.prisma.lecturer.findUnique({
+      where: { tenantId_email: { tenantId, email } },
+    });
   }
 
-  async findByUsername(username: string) {
-    return this.prisma.lecturer.findUnique({ where: { identityUsername: username } });
+  async findByUsername(tenantId: string, username: string) {
+    return this.prisma.lecturer.findUnique({
+      where: { tenantId_identityUsername: { tenantId, identityUsername: username } },
+    });
   }
 
-  async create(data: CreateLecturerDto) {
+  async create(tenantId: string, data: CreateLecturerDto) {
     return this.prisma.lecturer.create({
       data: {
+        tenantId,
         nidn: data.nidn,
         nrk: data.nrk,
         name: data.name,
@@ -121,7 +135,7 @@ export class LecturerRepository {
     });
   }
 
-  async update(id: string, data: UpdateLecturerDto) {
+  async update(tenantId: string, id: string, data: UpdateLecturerDto) {
     const updateData: Prisma.LecturerUpdateInput = {};
     if (data.nidn !== undefined) updateData.nidn = data.nidn;
     if (data.nrk !== undefined) updateData.nrk = data.nrk;
@@ -144,6 +158,7 @@ export class LecturerRepository {
   }
 
   async updateAuthentikInfo(
+    tenantId: string,
     id: string,
     info: { identityUserId: string; authentikStatus: AuthentikStatus },
   ) {
@@ -156,54 +171,56 @@ export class LecturerRepository {
     });
   }
 
-  async updateAuthentikStatus(id: string, authentikStatus: AuthentikStatus) {
+  async updateAuthentikStatus(tenantId: string, id: string, authentikStatus: AuthentikStatus) {
     return this.prisma.lecturer.update({ where: { id }, data: { authentikStatus } });
   }
 
-  async remove(id: string) {
+  async remove(tenantId: string, id: string) {
     return this.prisma.lecturer.delete({ where: { id } });
   }
 
-  async existsByNidn(nidn: string, excludeId?: string): Promise<boolean> {
+  async existsByNidn(tenantId: string, nidn: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.lecturer.count({
-      where: { nidn, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      where: { tenantId, nidn, ...(excludeId ? { id: { not: excludeId } } : {}) },
     });
     return count > 0;
   }
 
-  async existsByNrk(nrk: string, excludeId?: string): Promise<boolean> {
+  async existsByNrk(tenantId: string, nrk: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.lecturer.count({
-      where: { nrk, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      where: { tenantId, nrk, ...(excludeId ? { id: { not: excludeId } } : {}) },
     });
     return count > 0;
   }
 
-  async existsByEmail(email: string, excludeId?: string): Promise<boolean> {
+  async existsByEmail(tenantId: string, email: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.lecturer.count({
-      where: { email, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      where: { tenantId, email, ...(excludeId ? { id: { not: excludeId } } : {}) },
     });
     return count > 0;
   }
 
-  async existsByUsername(username: string, excludeId?: string): Promise<boolean> {
+  async existsByUsername(tenantId: string, username: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.lecturer.count({
-      where: { identityUsername: username, ...(excludeId ? { id: { not: excludeId } } : {}) },
+      where: { tenantId, identityUsername: username, ...(excludeId ? { id: { not: excludeId } } : {}) },
     });
     return count > 0;
   }
 
-  async facultyExists(id: string): Promise<boolean> {
-    const count = await this.prisma.faculty.count({ where: { id } });
+  async facultyExists(tenantId: string, id: string): Promise<boolean> {
+    const count = await this.prisma.faculty.count({ where: { id, tenantId } });
     return count > 0;
   }
 
-  async studyProgramExists(id: string): Promise<boolean> {
-    const count = await this.prisma.studyProgram.count({ where: { id } });
+  async studyProgramExists(tenantId: string, id: string): Promise<boolean> {
+    const count = await this.prisma.studyProgram.count({ where: { id, tenantId } });
     return count > 0;
   }
 
   mapToResponse(item: {
-    id: string; nidn: string; nrk: string; name: string;
+    id: string;
+    tenantId: string;
+    nidn: string; nrk: string; name: string;
     frontTitle: string | null; backTitle: string | null;
     email: string; phoneNumber: string | null;
     lastEducation: string; academicPosition: string;
@@ -216,6 +233,7 @@ export class LecturerRepository {
   }): LecturerMapped {
     return {
       id: item.id,
+      tenantId: item.tenantId,
       nidn: item.nidn,
       nrk: item.nrk,
       name: item.name,

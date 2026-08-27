@@ -42,6 +42,7 @@ export interface AcademicClassStudentMapped {
 
 export interface AcademicClassMapped {
   id: string;
+  tenantId: string;
   semesterId: string;
   courseId: string;
   code: string;
@@ -129,14 +130,14 @@ const classDetailInclude = {
 export class AcademicClassRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: QueryAcademicClassDto): Promise<PaginatedResult<AcademicClassMapped>> {
+  async findAll(tenantId: string, query: QueryAcademicClassDto): Promise<PaginatedResult<AcademicClassMapped>> {
     const {
       page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc',
       search, semesterId, courseId, lecturerId, isActive,
     } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.AcademicClassWhereInput = {};
+    const where: Prisma.AcademicClassWhereInput = { tenantId };
 
     if (search) {
       where.OR = [
@@ -171,17 +172,18 @@ export class AcademicClassRepository {
     );
   }
 
-  async findById(id: string): Promise<AcademicClassDetailMapped | null> {
-    const item = await this.prisma.academicClass.findUnique({
-      where: { id },
+  async findById(tenantId: string, id: string): Promise<AcademicClassDetailMapped | null> {
+    const item = await this.prisma.academicClass.findFirst({
+      where: { id, tenantId },
       include: classDetailInclude,
     });
     return item ? this.mapToDetailResponse(item) : null;
   }
 
-  async create(data: CreateAcademicClassDto): Promise<AcademicClassDetailMapped> {
+  async create(tenantId: string, data: CreateAcademicClassDto): Promise<AcademicClassDetailMapped> {
     const item = await this.prisma.academicClass.create({
       data: {
+        tenantId,
         semesterId: data.semesterId,
         courseId: data.courseId,
         code: data.code,
@@ -207,7 +209,7 @@ export class AcademicClassRepository {
     return this.mapToDetailResponse(item);
   }
 
-  async update(id: string, data: UpdateAcademicClassDto): Promise<AcademicClassDetailMapped> {
+  async update(tenantId: string, id: string, data: UpdateAcademicClassDto): Promise<AcademicClassDetailMapped> {
     const updateData: Prisma.AcademicClassUpdateInput = {};
 
     if (data.semesterId !== undefined) updateData.semester = { connect: { id: data.semesterId } };
@@ -265,6 +267,7 @@ export class AcademicClassRepository {
   }
 
   async bulkUpsertGrades(
+    tenantId: string,
     classId: string,
     grades: Array<{
       nim: string;
@@ -278,7 +281,10 @@ export class AcademicClassRepository {
     }>,
   ): Promise<{ updated: number; notFound: string[] }> {
     const students = await this.prisma.classStudent.findMany({
-      where: { classId },
+      where: {
+        classId,
+        class: { tenantId },
+      },
       include: { student: { select: { nim: true } } },
     });
 
@@ -290,7 +296,6 @@ export class AcademicClassRepository {
       const record = nimToRecord.get(g.nim);
       if (!record) { notFound.push(g.nim); continue; }
 
-      // Nilai akhir: gunakan yang diinput manual, atau hitung dari komponen jika ada komponen baru
       const mergedKehadiran = g.kehadiran ?? record.kehadiran ?? undefined;
       const mergedTugas     = g.tugas    ?? record.tugas    ?? undefined;
       const mergedQuiz      = g.quiz     ?? record.quiz     ?? undefined;
@@ -299,8 +304,6 @@ export class AcademicClassRepository {
 
       const computedNA = this.computeNilaiAkhir(mergedKehadiran, mergedTugas, mergedQuiz, mergedUts, mergedUas);
       const finalNA    = g.nilaiAkhir !== undefined ? g.nilaiAkhir : (computedNA ?? record.nilaiAkhir ?? null);
-
-      // Grade: selalu dari input dosen — tidak pernah dihitung otomatis
       const finalGrade = g.grade !== undefined ? g.grade : record.grade;
 
       await this.prisma.classStudent.update({
@@ -338,13 +341,14 @@ export class AcademicClassRepository {
     );
   }
 
-  async remove(id: string) {
+  async remove(tenantId: string, id: string) {
     return this.prisma.academicClass.delete({ where: { id } });
   }
 
-  async existsByCode(semesterId: string, courseId: string, code: string, excludeId?: string): Promise<boolean> {
+  async existsByCode(tenantId: string, semesterId: string, courseId: string, code: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.academicClass.count({
       where: {
+        tenantId,
         semesterId,
         courseId,
         code,
@@ -354,32 +358,33 @@ export class AcademicClassRepository {
     return count > 0;
   }
 
-  async semesterExists(id: string): Promise<boolean> {
-    const count = await this.prisma.academicSemester.count({ where: { id } });
+  async semesterExists(tenantId: string, id: string): Promise<boolean> {
+    const count = await this.prisma.academicSemester.count({ where: { id, tenantId } });
     return count > 0;
   }
 
-  async courseExists(id: string): Promise<boolean> {
-    const count = await this.prisma.course.count({ where: { id } });
+  async courseExists(tenantId: string, id: string): Promise<boolean> {
+    const count = await this.prisma.course.count({ where: { id, tenantId } });
     return count > 0;
   }
 
-  async lecturerExists(id: string): Promise<boolean> {
-    const count = await this.prisma.lecturer.count({ where: { id } });
+  async lecturerExists(tenantId: string, id: string): Promise<boolean> {
+    const count = await this.prisma.lecturer.count({ where: { id, tenantId } });
     return count > 0;
   }
 
-  async studentExists(id: string): Promise<boolean> {
-    const count = await this.prisma.student.count({ where: { id } });
+  async studentExists(tenantId: string, id: string): Promise<boolean> {
+    const count = await this.prisma.student.count({ where: { id, tenantId } });
     return count > 0;
   }
 
-  async getStudentCount(classId: string): Promise<number> {
-    return this.prisma.classStudent.count({ where: { classId } });
+  async getStudentCount(tenantId: string, classId: string): Promise<number> {
+    return this.prisma.classStudent.count({ where: { classId, class: { tenantId } } });
   }
 
   private mapToListResponse(item: {
     id: string;
+    tenantId: string;
     semesterId: string;
     courseId: string;
     code: string;
@@ -401,6 +406,7 @@ export class AcademicClassRepository {
   }): AcademicClassMapped {
     return {
       id: item.id,
+      tenantId: item.tenantId,
       semesterId: item.semesterId,
       courseId: item.courseId,
       code: item.code,
@@ -424,6 +430,7 @@ export class AcademicClassRepository {
 
   private mapToDetailResponse(item: {
     id: string;
+    tenantId: string;
     semesterId: string;
     courseId: string;
     code: string;
@@ -457,6 +464,7 @@ export class AcademicClassRepository {
         nim: string;
         name: string;
         gender: string;
+        entryYear: number;
         studyProgram: { id: string; code: string; name: string } | null;
       } | null;
     }>;
@@ -464,6 +472,7 @@ export class AcademicClassRepository {
   }): AcademicClassDetailMapped {
     return {
       id: item.id,
+      tenantId: item.tenantId,
       semesterId: item.semesterId,
       courseId: item.courseId,
       code: item.code,

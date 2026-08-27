@@ -8,6 +8,7 @@ import { createPaginatedResult, PaginatedResult } from '../../common/dto/paginat
 
 export interface StudyProgramMapped {
   id: string;
+  tenantId: string;
   facultyId: string;
   code: string;
   name: string;
@@ -24,16 +25,20 @@ export interface StudyProgramMapped {
 export class StudyProgramRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: QueryStudyProgramDto): Promise<PaginatedResult<StudyProgramMapped>> {
+  async findAll(tenantId: string, query: QueryStudyProgramDto): Promise<PaginatedResult<StudyProgramMapped>> {
     const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc', search, facultyId, degree, accreditation, isActive } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.StudyProgramWhereInput = {};
+    const where: Prisma.StudyProgramWhereInput = { tenantId };
 
     if (search) {
-      where.OR = [
-        { code: { contains: search, mode: 'insensitive' } },
-        { name: { contains: search, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { code: { contains: search, mode: 'insensitive' } },
+            { name: { contains: search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
 
@@ -72,9 +77,9 @@ export class StudyProgramRepository {
     return createPaginatedResult(mapped, total, page, limit);
   }
 
-  async findById(id: string): Promise<StudyProgramMapped | null> {
-    const item = await this.prisma.studyProgram.findUnique({
-      where: { id },
+  async findById(tenantId: string, id: string): Promise<StudyProgramMapped | null> {
+    const item = await this.prisma.studyProgram.findFirst({
+      where: { id, tenantId },
       include: {
         faculty: {
           select: { id: true, code: true, name: true },
@@ -85,15 +90,18 @@ export class StudyProgramRepository {
     return item ? this.mapToResponse(item) : null;
   }
 
-  async findByCode(code: string) {
+  async findByCode(tenantId: string, code: string) {
     return this.prisma.studyProgram.findUnique({
-      where: { code },
+      where: {
+        tenantId_code: { tenantId, code },
+      },
     });
   }
 
-  async create(data: CreateStudyProgramDto) {
+  async create(tenantId: string, data: CreateStudyProgramDto) {
     return this.prisma.studyProgram.create({
       data: {
+        tenantId,
         facultyId: data.facultyId,
         code: data.code,
         name: data.name,
@@ -110,7 +118,7 @@ export class StudyProgramRepository {
     });
   }
 
-  async update(id: string, data: UpdateStudyProgramDto) {
+  async update(tenantId: string, id: string, data: UpdateStudyProgramDto) {
     const updateData: Prisma.StudyProgramUpdateInput = {};
 
     if (data.facultyId !== undefined) updateData.faculty = { connect: { id: data.facultyId } };
@@ -132,28 +140,33 @@ export class StudyProgramRepository {
     });
   }
 
-  async remove(id: string) {
+  async remove(tenantId: string, id: string) {
     return this.prisma.studyProgram.delete({
       where: { id },
     });
   }
 
-  async existsByCode(code: string): Promise<boolean> {
+  async existsByCode(tenantId: string, code: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.studyProgram.count({
-      where: { code },
+      where: {
+        tenantId,
+        code,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
     });
     return count > 0;
   }
 
-  async facultyExists(id: string): Promise<boolean> {
+  async facultyExists(tenantId: string, id: string): Promise<boolean> {
     const count = await this.prisma.faculty.count({
-      where: { id },
+      where: { id, tenantId },
     });
     return count > 0;
   }
 
   mapToResponse(item: {
     id: string;
+    tenantId: string;
     facultyId: string;
     code: string;
     name: string;
@@ -167,6 +180,7 @@ export class StudyProgramRepository {
   }): StudyProgramMapped {
     return {
       id: item.id,
+      tenantId: item.tenantId,
       facultyId: item.facultyId,
       code: item.code,
       name: item.name,

@@ -8,6 +8,7 @@ import { createPaginatedResult, PaginatedResult } from '../../common/dto/paginat
 
 export interface AcademicSemesterMapped {
   id: string;
+  tenantId: string;
   code: string;
   name: string;
   academicYear: string;
@@ -24,7 +25,7 @@ export interface AcademicSemesterMapped {
 export class AcademicSemesterRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(query: QueryAcademicSemesterDto): Promise<PaginatedResult<AcademicSemesterMapped>> {
+  async findAll(tenantId: string, query: QueryAcademicSemesterDto): Promise<PaginatedResult<AcademicSemesterMapped>> {
     const {
       page = 1,
       limit = 10,
@@ -38,13 +39,17 @@ export class AcademicSemesterRepository {
     } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.AcademicSemesterWhereInput = {};
+    const where: Prisma.AcademicSemesterWhereInput = { tenantId };
 
     if (search) {
-      where.OR = [
-        { code: { contains: search, mode: 'insensitive' } },
-        { name: { contains: search, mode: 'insensitive' } },
-        { academicYear: { contains: search, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { code: { contains: search, mode: 'insensitive' } },
+            { name: { contains: search, mode: 'insensitive' } },
+            { academicYear: { contains: search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
 
@@ -78,31 +83,32 @@ export class AcademicSemesterRepository {
     return createPaginatedResult(mapped, total, page, limit);
   }
 
-  async findById(id: string): Promise<AcademicSemesterMapped | null> {
-    const item = await this.prisma.academicSemester.findUnique({
-      where: { id },
-    });
-
-    return item ? this.mapToResponse(item) : null;
-  }
-
-  async findByCode(code: string) {
-    return this.prisma.academicSemester.findUnique({
-      where: { code },
-    });
-  }
-
-  async findCurrent(): Promise<AcademicSemesterMapped | null> {
+  async findById(tenantId: string, id: string): Promise<AcademicSemesterMapped | null> {
     const item = await this.prisma.academicSemester.findFirst({
-      where: { isCurrent: true },
+      where: { id, tenantId },
     });
 
     return item ? this.mapToResponse(item) : null;
   }
 
-  async create(data: CreateAcademicSemesterDto) {
+  async findByCode(tenantId: string, code: string) {
+    return this.prisma.academicSemester.findUnique({
+      where: { tenantId_code: { tenantId, code } },
+    });
+  }
+
+  async findCurrent(tenantId: string): Promise<AcademicSemesterMapped | null> {
+    const item = await this.prisma.academicSemester.findFirst({
+      where: { tenantId, isCurrent: true },
+    });
+
+    return item ? this.mapToResponse(item) : null;
+  }
+
+  async create(tenantId: string, data: CreateAcademicSemesterDto) {
     return this.prisma.academicSemester.create({
       data: {
+        tenantId,
         code: data.code,
         name: data.name,
         academicYear: data.academicYear,
@@ -115,7 +121,7 @@ export class AcademicSemesterRepository {
     });
   }
 
-  async update(id: string, data: UpdateAcademicSemesterDto) {
+  async update(tenantId: string, id: string, data: UpdateAcademicSemesterDto) {
     const updateData: Prisma.AcademicSemesterUpdateInput = {};
 
     if (data.code !== undefined) updateData.code = data.code;
@@ -133,16 +139,16 @@ export class AcademicSemesterRepository {
     });
   }
 
-  async remove(id: string) {
+  async remove(tenantId: string, id: string) {
     return this.prisma.academicSemester.delete({
       where: { id },
     });
   }
 
-  async setCurrent(id: string) {
+  async setCurrent(tenantId: string, id: string) {
     return this.prisma.$transaction(async (tx) => {
       await tx.academicSemester.updateMany({
-        where: { isCurrent: true },
+        where: { tenantId, isCurrent: true },
         data: { isCurrent: false },
       });
 
@@ -155,15 +161,20 @@ export class AcademicSemesterRepository {
     });
   }
 
-  async existsByCode(code: string): Promise<boolean> {
+  async existsByCode(tenantId: string, code: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.academicSemester.count({
-      where: { code },
+      where: {
+        tenantId,
+        code,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
     });
     return count > 0;
   }
 
   mapToResponse(item: {
     id: string;
+    tenantId: string;
     code: string;
     name: string;
     academicYear: string;
@@ -177,6 +188,7 @@ export class AcademicSemesterRepository {
   }): AcademicSemesterMapped {
     return {
       id: item.id,
+      tenantId: item.tenantId,
       code: item.code,
       name: item.name,
       academicYear: item.academicYear,

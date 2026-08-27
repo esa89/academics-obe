@@ -1,6 +1,9 @@
 import {
-  Injectable, NotFoundException, ConflictException,
-  BadRequestException, Logger,
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
@@ -13,190 +16,190 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 @Injectable()
 export class LecturerService {
   private readonly logger = new Logger(LecturerService.name);
+  private readonly identityApiUrl: string;
 
   constructor(
     private readonly repository: LecturerRepository,
-    private readonly configService: ConfigService,
-  ) {}
-
-  private get identityApiUrl(): string {
-    return this.configService.get<string>('IDENTITY_API_URL', 'http://localhost:3013');
+    private readonly configService?: ConfigService,
+  ) {
+    this.identityApiUrl =
+      this.configService?.get<string>('IDENTITY_API_URL') ||
+      process.env.IDENTITY_API_URL ||
+      'http://localhost:3013';
   }
 
-  async findAll(query: QueryLecturerDto) {
-    return this.repository.findAll(query);
+  async findAll(tenantId: string, query: QueryLecturerDto) {
+    this.logger.log(`[Tenant ${tenantId}] Fetching Lecturers: ${JSON.stringify(query)}`);
+    return this.repository.findAll(tenantId, query);
   }
 
-  async findOne(id: string) {
-    const item = await this.repository.findById(id);
-    if (!item) throw new NotFoundException(`Dosen dengan id '${id}' tidak ditemukan`);
+  async findOne(tenantId: string, id: string) {
+    this.logger.log(`[Tenant ${tenantId}] Fetching Lecturer by id: ${id}`);
+    const item = await this.repository.findById(tenantId, id);
+
+    if (!item) {
+      throw new NotFoundException(`Lecturer with id '${id}' not found`);
+    }
+
     return item;
   }
 
-  async create(data: CreateLecturerDto) {
-    this.logger.log(`Creating Lecturer: ${data.nidn}`);
+  async create(tenantId: string, data: CreateLecturerDto) {
+    this.logger.log(`[Tenant ${tenantId}] Creating Lecturer: ${data.nidn}`);
 
-    await this.validateUniqueness(data);
+    const facultyExists = await this.repository.facultyExists(tenantId, data.facultyId);
+    if (!facultyExists) {
+      throw new BadRequestException(`Faculty with id '${data.facultyId}' not found in this tenant`);
+    }
 
-    const ok = await this.repository.facultyExists(data.facultyId);
-    if (!ok) throw new BadRequestException(`Fakultas dengan id '${data.facultyId}' tidak ditemukan`);
+    const spExists = await this.repository.studyProgramExists(tenantId, data.studyProgramId);
+    if (!spExists) {
+      throw new BadRequestException(`Study Program with id '${data.studyProgramId}' not found in this tenant`);
+    }
 
-    const spOk = await this.repository.studyProgramExists(data.studyProgramId);
-    if (!spOk) throw new BadRequestException(`Program Studi dengan id '${data.studyProgramId}' tidak ditemukan`);
+    const nidnExists = await this.repository.existsByNidn(tenantId, data.nidn);
+    if (nidnExists) {
+      throw new ConflictException(`Lecturer with NIDN '${data.nidn}' already exists in this tenant`);
+    }
 
-    const lecturer = await this.repository.create(data);
-    this.logger.log(`Lecturer created: ${lecturer.id}`);
+    const nrkExists = await this.repository.existsByNrk(tenantId, data.nrk);
+    if (nrkExists) {
+      throw new ConflictException(`Lecturer with NRK '${data.nrk}' already exists in this tenant`);
+    }
 
-    // Try to create Authentik user (non-blocking)
-    const authentikResult = await this.syncToAuthentik(lecturer.id, {
-      username: data.username,
-      email: data.email,
-      name: data.name,
-      password: data.password,
-    });
+    const emailExists = await this.repository.existsByEmail(tenantId, data.email);
+    if (emailExists) {
+      throw new ConflictException(`Lecturer with email '${data.email}' already exists in this tenant`);
+    }
 
-    return {
-      ...this.repository.mapToResponse(lecturer),
-      authentikCreated: authentikResult.success,
-      authentikMessage: authentikResult.message,
-    };
+    if (data.username) {
+      const usernameExists = await this.repository.existsByUsername(tenantId, data.username);
+      if (usernameExists) {
+        throw new ConflictException(`Username '${data.username}' already exists in this tenant`);
+      }
+    }
+
+    const item = await this.repository.create(tenantId, data);
+    this.logger.log(`[Tenant ${tenantId}] Lecturer created: ${item.id}`);
+
+    // Asynchronously attempt to sync with Authentik if credentials were provided
+    if (data.username && data.password) {
+      this.syncToAuthentik(tenantId, item.id, {
+        username: data.username,
+        email: data.email,
+        name: data.name,
+        password: data.password,
+      }).catch((err) => {
+        this.logger.error(`[Tenant ${tenantId}] Failed to auto-sync lecturer ${item.id} to Authentik: ${err.message}`);
+      });
+    }
+
+    return item;
   }
 
-  async update(id: string, data: UpdateLecturerDto) {
-    this.logger.log(`Updating Lecturer: ${id}`);
+  async update(tenantId: string, id: string, data: UpdateLecturerDto) {
+    this.logger.log(`[Tenant ${tenantId}] Updating Lecturer id: ${id}`);
 
-    const existing = await this.repository.findById(id);
-    if (!existing) throw new NotFoundException(`Dosen dengan id '${id}' tidak ditemukan`);
+    const existing = await this.repository.findById(tenantId, id);
+    if (!existing) {
+      throw new NotFoundException(`Lecturer with id '${id}' not found`);
+    }
+
+    if (data.facultyId && data.facultyId !== existing.facultyId) {
+      const facultyExists = await this.repository.facultyExists(tenantId, data.facultyId);
+      if (!facultyExists) {
+        throw new BadRequestException(`Faculty with id '${data.facultyId}' not found in this tenant`);
+      }
+    }
+
+    if (data.studyProgramId && data.studyProgramId !== existing.studyProgramId) {
+      const spExists = await this.repository.studyProgramExists(tenantId, data.studyProgramId);
+      if (!spExists) {
+        throw new BadRequestException(`Study Program with id '${data.studyProgramId}' not found in this tenant`);
+      }
+    }
 
     if (data.nidn && data.nidn !== existing.nidn) {
-      const exists = await this.repository.existsByNidn(data.nidn, id);
-      if (exists) throw new ConflictException(`NIDN '${data.nidn}' sudah digunakan`);
+      const nidnExists = await this.repository.existsByNidn(tenantId, data.nidn, id);
+      if (nidnExists) {
+        throw new ConflictException(`Lecturer with NIDN '${data.nidn}' already exists in this tenant`);
+      }
     }
 
     if (data.nrk && data.nrk !== existing.nrk) {
-      const exists = await this.repository.existsByNrk(data.nrk, id);
-      if (exists) throw new ConflictException(`NRK '${data.nrk}' sudah digunakan`);
+      const nrkExists = await this.repository.existsByNrk(tenantId, data.nrk, id);
+      if (nrkExists) {
+        throw new ConflictException(`Lecturer with NRK '${data.nrk}' already exists in this tenant`);
+      }
     }
 
     if (data.email && data.email !== existing.email) {
-      const exists = await this.repository.existsByEmail(data.email, id);
-      if (exists) throw new ConflictException(`Email '${data.email}' sudah digunakan`);
+      const emailExists = await this.repository.existsByEmail(tenantId, data.email, id);
+      if (emailExists) {
+        throw new ConflictException(`Lecturer with email '${data.email}' already exists in this tenant`);
+      }
     }
 
-    if (data.facultyId) {
-      const ok = await this.repository.facultyExists(data.facultyId);
-      if (!ok) throw new BadRequestException(`Fakultas dengan id '${data.facultyId}' tidak ditemukan`);
-    }
-
-    if (data.studyProgramId) {
-      const ok = await this.repository.studyProgramExists(data.studyProgramId);
-      if (!ok) throw new BadRequestException(`Program Studi dengan id '${data.studyProgramId}' tidak ditemukan`);
-    }
-
-    const item = await this.repository.update(id, data);
-    this.logger.log(`Lecturer updated: ${item.id}`);
-    return this.repository.mapToResponse(item);
-  }
-
-  async remove(id: string) {
-    this.logger.log(`Deleting Lecturer: ${id}`);
-    const existing = await this.repository.findById(id);
-    if (!existing) throw new NotFoundException(`Dosen dengan id '${id}' tidak ditemukan`);
-    const item = await this.repository.remove(id);
-    this.logger.log(`Lecturer deleted: ${item.id}`);
+    const item = await this.repository.update(tenantId, id, data);
+    this.logger.log(`[Tenant ${tenantId}] Lecturer updated: ${item.id}`);
     return item;
   }
 
-  async syncAuthentik(id: string) {
-    const lecturer = await this.repository.findById(id);
-    if (!lecturer) throw new NotFoundException(`Dosen dengan id '${id}' tidak ditemukan`);
+  async remove(tenantId: string, id: string) {
+    this.logger.log(`[Tenant ${tenantId}] Deleting Lecturer id: ${id}`);
 
-    if (!lecturer.identityUsername) {
-      throw new BadRequestException('Dosen tidak memiliki username yang terdaftar');
+    const existing = await this.repository.findById(tenantId, id);
+    if (!existing) {
+      throw new NotFoundException(`Lecturer with id '${id}' not found`);
     }
 
-    const result = await this.syncToAuthentik(id, {
-      username: lecturer.identityUsername,
-      email: lecturer.email,
-      name: lecturer.name,
-      password: null,
-    });
-
-    if (!result.success) {
-      throw new BadRequestException(`Sinkronisasi Authentik gagal: ${result.message}`);
-    }
-
-    return { message: 'Berhasil disinkronkan ke Authentik', lecturer: await this.repository.findById(id) };
+    const item = await this.repository.remove(tenantId, id);
+    this.logger.log(`[Tenant ${tenantId}] Lecturer deleted: ${item.id}`);
+    return item;
   }
 
-  async resetPassword(id: string, dto: ResetPasswordDto) {
-    const lecturer = await this.repository.findById(id);
-    if (!lecturer) throw new NotFoundException(`Dosen dengan id '${id}' tidak ditemukan`);
+  async resetPassword(tenantId: string, id: string, data: ResetPasswordDto) {
+    this.logger.log(`[Tenant ${tenantId}] Resetting password for Lecturer id: ${id}`);
 
-    if (!lecturer.identityUserId) {
-      throw new BadRequestException('Akun Authentik belum dibuat untuk dosen ini');
+    const existing = await this.repository.findById(tenantId, id);
+    if (!existing) {
+      throw new NotFoundException(`Lecturer with id '${id}' not found`);
+    }
+
+    if (!existing.identityUserId) {
+      throw new BadRequestException(`Lecturer ${existing.name} is not linked to an Authentik identity account`);
     }
 
     try {
       await axios.post(
-        `${this.identityApiUrl}/users/${lecturer.identityUserId}/reset-password`,
-        { newPassword: dto.newPassword },
+        `${this.identityApiUrl}/users/${existing.identityUserId}/reset-password`,
+        { password: data.newPassword },
       );
-      this.logger.log(`Password reset for lecturer: ${id}`);
-      return { message: 'Password berhasil direset' };
-    } catch (error: any) {
-      this.logger.error(`Reset password failed for ${id}:`, error.response?.data || error.message);
-      throw new BadRequestException(
-        error.response?.data?.message || 'Gagal mereset password di Authentik',
-      );
+      return { success: true, message: 'Password reset successfully' };
+    } catch (err: any) {
+      this.logger.error(`Failed to reset password via identity API: ${err.message}`);
+      throw new BadRequestException('Failed to communicate with Identity service');
     }
   }
 
   private async syncToAuthentik(
+    tenantId: string,
     lecturerId: string,
-    payload: { username: string; email: string; name: string; password: string | null },
-  ): Promise<{ success: boolean; message: string }> {
+    payload: { username: string; email: string; name: string; password?: string },
+  ) {
     try {
-      const response = await axios.post(`${this.identityApiUrl}/users`, {
-        username: payload.username,
-        email: payload.email,
-        name: payload.name,
-        password: payload.password,
+      const resp = await axios.post(`${this.identityApiUrl}/users`, {
+        ...payload,
+        role: 'dosen',
       });
-
-      const { authentikUserId } = response.data?.data ?? response.data;
-
-      await this.repository.updateAuthentikInfo(lecturerId, {
-        identityUserId: authentikUserId,
-        authentikStatus: 'ACTIVE',
-      });
-
-      this.logger.log(`Authentik user created for lecturer ${lecturerId}: ${authentikUserId}`);
-      return { success: true, message: 'Akun Authentik berhasil dibuat' };
-    } catch (error: any) {
-      this.logger.warn(
-        `Authentik sync failed for lecturer ${lecturerId}:`,
-        error.response?.data || error.message,
-      );
-      await this.repository.updateAuthentikStatus(lecturerId, 'NOT_SYNCED');
-      return {
-        success: false,
-        message: error.response?.data?.message || 'Gagal membuat akun Authentik',
-      };
+      if (resp.data?.data?.id) {
+        await this.repository.updateAuthentikInfo(tenantId, lecturerId, {
+          identityUserId: resp.data.data.id,
+          authentikStatus: 'ACTIVE',
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(`Identity sync failed for lecturer ${lecturerId}: ${err.message}`);
     }
-  }
-
-  private async validateUniqueness(data: CreateLecturerDto) {
-    const [nidn, nrk, email, username] = await Promise.all([
-      this.repository.existsByNidn(data.nidn),
-      this.repository.existsByNrk(data.nrk),
-      this.repository.existsByEmail(data.email),
-      this.repository.existsByUsername(data.username),
-    ]);
-
-    if (nidn) throw new ConflictException(`NIDN '${data.nidn}' sudah terdaftar`);
-    if (nrk) throw new ConflictException(`NRK '${data.nrk}' sudah terdaftar`);
-    if (email) throw new ConflictException(`Email '${data.email}' sudah terdaftar`);
-    if (username) throw new ConflictException(`Username '${data.username}' sudah digunakan`);
   }
 }

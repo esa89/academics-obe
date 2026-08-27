@@ -16,14 +16,14 @@ export class CurriculumService {
 
   constructor(private readonly repository: CurriculumRepository) {}
 
-  async findAll(query: QueryCurriculumDto) {
-    this.logger.log(`Fetching Curriculums with query: ${JSON.stringify(query)}`);
-    return this.repository.findAll(query);
+  async findAll(tenantId: string, query: QueryCurriculumDto) {
+    this.logger.log(`[Tenant ${tenantId}] Fetching Curricula: ${JSON.stringify(query)}`);
+    return this.repository.findAll(tenantId, query);
   }
 
-  async findOne(id: string) {
-    this.logger.log(`Fetching Curriculum by id: ${id}`);
-    const item = await this.repository.findById(id);
+  async findOne(tenantId: string, id: string) {
+    this.logger.log(`[Tenant ${tenantId}] Fetching Curriculum by id: ${id}`);
+    const item = await this.repository.findById(tenantId, id);
 
     if (!item) {
       throw new NotFoundException(`Curriculum with id '${id}' not found`);
@@ -32,99 +32,75 @@ export class CurriculumService {
     return item;
   }
 
-  async create(data: CreateCurriculumDto) {
-    this.logger.log(`Creating Curriculum with code: ${data.code}`);
+  async create(tenantId: string, data: CreateCurriculumDto) {
+    this.logger.log(`[Tenant ${tenantId}] Creating Curriculum: ${data.code}`);
 
     if (data.studyProgramId) {
-      const ok = await this.repository.studyProgramExists(data.studyProgramId);
-      if (!ok) {
-        throw new BadRequestException(
-          `Study Program with id '${data.studyProgramId}' not found`,
-        );
+      const spExists = await this.repository.studyProgramExists(tenantId, data.studyProgramId);
+      if (!spExists) {
+        throw new BadRequestException(`Study Program with id '${data.studyProgramId}' not found in this tenant`);
       }
     }
 
     if (data.facultyId) {
-      const ok = await this.repository.facultyExists(data.facultyId);
-      if (!ok) {
-        throw new BadRequestException(
-          `Faculty with id '${data.facultyId}' not found`,
-        );
+      const facExists = await this.repository.facultyExists(tenantId, data.facultyId);
+      if (!facExists) {
+        throw new BadRequestException(`Faculty with id '${data.facultyId}' not found in this tenant`);
       }
     }
 
     const exists = await this.repository.existsByCode(
+      tenantId,
       data.code,
       data.studyProgramId ?? null,
       data.facultyId ?? null,
     );
     if (exists) {
-      throw new ConflictException(
-        `Curriculum with code '${data.code}' already exists for this scope`,
-      );
+      throw new ConflictException(`Curriculum with code '${data.code}' already exists in this scope for this tenant`);
     }
 
-    const item = await this.repository.create(data);
-    this.logger.log(`Curriculum created with id: ${item.id}`);
-    return this.repository.mapToResponse(item);
+    const item = await this.repository.create(tenantId, data);
+    this.logger.log(`[Tenant ${tenantId}] Curriculum created: ${item.id}`);
+    return item;
   }
 
-  async update(id: string, data: UpdateCurriculumDto) {
-    this.logger.log(`Updating Curriculum id: ${id}`);
+  async update(tenantId: string, id: string, data: UpdateCurriculumDto) {
+    this.logger.log(`[Tenant ${tenantId}] Updating Curriculum id: ${id}`);
 
-    const existing = await this.repository.findById(id);
+    const existing = await this.repository.findById(tenantId, id);
     if (!existing) {
       throw new NotFoundException(`Curriculum with id '${id}' not found`);
     }
 
-    if (data.studyProgramId) {
-      const ok = await this.repository.studyProgramExists(data.studyProgramId);
-      if (!ok) {
-        throw new BadRequestException(
-          `Study Program with id '${data.studyProgramId}' not found`,
-        );
+    if (data.studyProgramId !== undefined && data.studyProgramId !== null) {
+      const spExists = await this.repository.studyProgramExists(tenantId, data.studyProgramId);
+      if (!spExists) {
+        throw new BadRequestException(`Study Program with id '${data.studyProgramId}' not found in this tenant`);
       }
     }
 
-    if (data.facultyId) {
-      const ok = await this.repository.facultyExists(data.facultyId);
-      if (!ok) {
-        throw new BadRequestException(
-          `Faculty with id '${data.facultyId}' not found`,
-        );
+    if (data.facultyId !== undefined && data.facultyId !== null) {
+      const facExists = await this.repository.facultyExists(tenantId, data.facultyId);
+      if (!facExists) {
+        throw new BadRequestException(`Faculty with id '${data.facultyId}' not found in this tenant`);
       }
     }
 
-    if (data.code && data.code !== existing.code) {
-      const studyProgramId = data.studyProgramId !== undefined
-        ? (data.studyProgramId ?? null)
-        : (existing.studyProgramId ?? null);
-      const facultyId = data.facultyId !== undefined
-        ? (data.facultyId ?? null)
-        : (existing.facultyId ?? null);
-      const codeExists = await this.repository.existsByCode(data.code, studyProgramId, facultyId, id);
-      if (codeExists) {
-        throw new ConflictException(
-          `Curriculum with code '${data.code}' already exists for this scope`,
-        );
-      }
-    }
-
-    const item = await this.repository.update(id, data);
-    this.logger.log(`Curriculum updated: ${item.id}`);
-    return this.repository.mapToResponse(item);
+    const item = await this.repository.update(tenantId, id, data);
+    this.logger.log(`[Tenant ${tenantId}] Curriculum updated: ${item.id}`);
+    return item;
   }
 
-  async remove(id: string) {
-    this.logger.log(`Deleting Curriculum id: ${id}`);
+  async remove(tenantId: string, id: string) {
+    this.logger.log(`[Tenant ${tenantId}] Deleting Curriculum id: ${id}`);
 
-    const existing = await this.repository.findById(id);
+    const existing = await this.repository.findById(tenantId, id);
     if (!existing) {
       throw new NotFoundException(`Curriculum with id '${id}' not found`);
     }
 
-    const item = await this.repository.remove(id);
-    this.logger.log(`Curriculum deleted: ${item.id}`);
+    const item = await this.repository.remove(tenantId, id);
+    this.logger.log(`[Tenant ${tenantId}] Curriculum deleted: ${item.id}`);
     return item;
   }
 }

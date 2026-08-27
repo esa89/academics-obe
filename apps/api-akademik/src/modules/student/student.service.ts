@@ -1,5 +1,9 @@
 import {
-  Injectable, NotFoundException, ConflictException, BadRequestException, Logger,
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { StudentRepository } from './student.repository';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -12,85 +16,140 @@ export class StudentService {
 
   constructor(private readonly repository: StudentRepository) {}
 
-  async findAll(query: QueryStudentDto) {
-    return this.repository.findAll(query);
+  async findAll(tenantId: string, query: QueryStudentDto) {
+    this.logger.log(`[Tenant ${tenantId}] Fetching Students: ${JSON.stringify(query)}`);
+    return this.repository.findAll(tenantId, query);
   }
 
-  async findOne(id: string) {
-    const item = await this.repository.findById(id);
-    if (!item) throw new NotFoundException(`Mahasiswa dengan id '${id}' tidak ditemukan`);
+  async findOne(tenantId: string, id: string) {
+    this.logger.log(`[Tenant ${tenantId}] Fetching Student by id: ${id}`);
+    const item = await this.repository.findById(tenantId, id);
+
+    if (!item) {
+      throw new NotFoundException(`Student with id '${id}' not found`);
+    }
+
     return item;
   }
 
-  async create(data: CreateStudentDto) {
-    this.logger.log(`Creating Student: ${data.nim}`);
+  async create(tenantId: string, data: CreateStudentDto) {
+    this.logger.log(`[Tenant ${tenantId}] Creating Student: ${data.nim}`);
 
-    const [nimExists, emailExists] = await Promise.all([
-      this.repository.existsByNim(data.nim),
-      data.email ? this.repository.existsByEmail(data.email) : Promise.resolve(false),
-    ]);
-    if (nimExists)   throw new ConflictException(`NIM '${data.nim}' sudah terdaftar`);
-    if (emailExists) throw new ConflictException(`Email '${data.email}' sudah digunakan`);
+    const facultyExists = await this.repository.facultyExists(tenantId, data.facultyId);
+    if (!facultyExists) {
+      throw new BadRequestException(`Faculty with id '${data.facultyId}' not found in this tenant`);
+    }
 
-    await this.validateRelations(data);
+    const spExists = await this.repository.studyProgramExists(tenantId, data.studyProgramId);
+    if (!spExists) {
+      throw new BadRequestException(`Study Program with id '${data.studyProgramId}' not found in this tenant`);
+    }
 
-    const student = await this.repository.create(data);
-    this.logger.log(`Student created: ${student.id}`);
-    return this.repository.mapToResponse(student);
+    if (data.curriculumId) {
+      const currExists = await this.repository.curriculumExists(tenantId, data.curriculumId);
+      if (!currExists) {
+        throw new BadRequestException(`Curriculum with id '${data.curriculumId}' not found in this tenant`);
+      }
+    }
+
+    if (data.academicSemesterId) {
+      const semExists = await this.repository.academicSemesterExists(tenantId, data.academicSemesterId);
+      if (!semExists) {
+        throw new BadRequestException(`Academic Semester with id '${data.academicSemesterId}' not found in this tenant`);
+      }
+    }
+
+    const nimExists = await this.repository.existsByNim(tenantId, data.nim);
+    if (nimExists) {
+      throw new ConflictException(`Student with NIM '${data.nim}' already exists in this tenant`);
+    }
+
+    if (data.email) {
+      const emailExists = await this.repository.existsByEmail(tenantId, data.email);
+      if (emailExists) {
+        throw new ConflictException(`Student with email '${data.email}' already exists in this tenant`);
+      }
+    }
+
+    const item = await this.repository.create(tenantId, data);
+    this.logger.log(`[Tenant ${tenantId}] Student created: ${item.id}`);
+    return item;
   }
 
-  async update(id: string, data: UpdateStudentDto) {
-    this.logger.log(`Updating Student: ${id}`);
-    const existing = await this.repository.findById(id);
-    if (!existing) throw new NotFoundException(`Mahasiswa dengan id '${id}' tidak ditemukan`);
+  async update(tenantId: string, id: string, data: UpdateStudentDto) {
+    this.logger.log(`[Tenant ${tenantId}] Updating Student id: ${id}`);
+
+    const existing = await this.repository.findById(tenantId, id);
+    if (!existing) {
+      throw new NotFoundException(`Student with id '${id}' not found`);
+    }
+
+    if (data.facultyId && data.facultyId !== existing.facultyId) {
+      const facultyExists = await this.repository.facultyExists(tenantId, data.facultyId);
+      if (!facultyExists) {
+        throw new BadRequestException(`Faculty with id '${data.facultyId}' not found in this tenant`);
+      }
+    }
+
+    if (data.studyProgramId && data.studyProgramId !== existing.studyProgramId) {
+      const spExists = await this.repository.studyProgramExists(tenantId, data.studyProgramId);
+      if (!spExists) {
+        throw new BadRequestException(`Study Program with id '${data.studyProgramId}' not found in this tenant`);
+      }
+    }
+
+    if (data.curriculumId !== undefined && data.curriculumId !== null) {
+      const currExists = await this.repository.curriculumExists(tenantId, data.curriculumId);
+      if (!currExists) {
+        throw new BadRequestException(`Curriculum with id '${data.curriculumId}' not found in this tenant`);
+      }
+    }
+
+    if (data.academicSemesterId !== undefined && data.academicSemesterId !== null) {
+      const semExists = await this.repository.academicSemesterExists(tenantId, data.academicSemesterId);
+      if (!semExists) {
+        throw new BadRequestException(`Academic Semester with id '${data.academicSemesterId}' not found in this tenant`);
+      }
+    }
 
     if (data.nim && data.nim !== existing.nim) {
-      const exists = await this.repository.existsByNim(data.nim, id);
-      if (exists) throw new ConflictException(`NIM '${data.nim}' sudah terdaftar`);
+      const nimExists = await this.repository.existsByNim(tenantId, data.nim, id);
+      if (nimExists) {
+        throw new ConflictException(`Student with NIM '${data.nim}' already exists in this tenant`);
+      }
     }
+
     if (data.email && data.email !== existing.email) {
-      const exists = await this.repository.existsByEmail(data.email, id);
-      if (exists) throw new ConflictException(`Email '${data.email}' sudah digunakan`);
+      const emailExists = await this.repository.existsByEmail(tenantId, data.email, id);
+      if (emailExists) {
+        throw new ConflictException(`Student with email '${data.email}' already exists in this tenant`);
+      }
     }
 
-    await this.validateRelations(data);
-
-    const student = await this.repository.update(id, data);
-    this.logger.log(`Student updated: ${student.id}`);
-    return this.repository.mapToResponse(student);
-  }
-
-  async remove(id: string) {
-    this.logger.log(`Deleting Student: ${id}`);
-    const existing = await this.repository.findById(id);
-    if (!existing) throw new NotFoundException(`Mahasiswa dengan id '${id}' tidak ditemukan`);
-    const item = await this.repository.remove(id);
-    this.logger.log(`Student deleted: ${item.id}`);
+    const item = await this.repository.update(tenantId, id, data);
+    this.logger.log(`[Tenant ${tenantId}] Student updated: ${item.id}`);
     return item;
   }
 
-  async getTranscript(id: string) {
-    const student = await this.repository.findById(id);
-    if (!student) throw new NotFoundException(`Mahasiswa dengan id '${id}' tidak ditemukan`);
-    return this.repository.getTranscript(id);
+  async remove(tenantId: string, id: string) {
+    this.logger.log(`[Tenant ${tenantId}] Deleting Student id: ${id}`);
+
+    const existing = await this.repository.findById(tenantId, id);
+    if (!existing) {
+      throw new NotFoundException(`Student with id '${id}' not found`);
+    }
+
+    const item = await this.repository.remove(tenantId, id);
+    this.logger.log(`[Tenant ${tenantId}] Student deleted: ${item.id}`);
+    return item;
   }
 
-  private async validateRelations(data: Partial<CreateStudentDto>) {
-    if (data.facultyId) {
-      const ok = await this.repository.facultyExists(data.facultyId);
-      if (!ok) throw new BadRequestException(`Fakultas tidak ditemukan`);
+  async getTranscript(tenantId: string, studentId: string) {
+    this.logger.log(`[Tenant ${tenantId}] Fetching transcript for student: ${studentId}`);
+    const student = await this.repository.findById(tenantId, studentId);
+    if (!student) {
+      throw new NotFoundException(`Student with id '${studentId}' not found`);
     }
-    if (data.studyProgramId) {
-      const ok = await this.repository.studyProgramExists(data.studyProgramId);
-      if (!ok) throw new BadRequestException(`Program Studi tidak ditemukan`);
-    }
-    if (data.curriculumId) {
-      const ok = await this.repository.curriculumExists(data.curriculumId);
-      if (!ok) throw new BadRequestException(`Kurikulum tidak ditemukan`);
-    }
-    if (data.academicSemesterId) {
-      const ok = await this.repository.academicSemesterExists(data.academicSemesterId);
-      if (!ok) throw new BadRequestException(`Semester tidak ditemukan`);
-    }
+    return this.repository.getTranscript(tenantId, studentId);
   }
 }

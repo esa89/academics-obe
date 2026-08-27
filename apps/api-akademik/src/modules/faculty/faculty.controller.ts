@@ -16,15 +16,18 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiQuery,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { FacultyService } from './faculty.service';
 import { CreateFacultyDto } from './dto/create-faculty.dto';
 import { UpdateFacultyDto } from './dto/update-faculty.dto';
 import { QueryFacultyDto } from './dto/query-faculty.dto';
 import { FacultyResponseDto } from './dto/faculty-response.dto';
+import { TenantId } from '../../common/decorators/tenant.decorator';
 
 @ApiTags('Faculties')
 @ApiBearerAuth()
+@ApiHeader({ name: 'x-tenant-id', required: false, description: 'Tenant UUID or slug' })
 @Controller('faculties')
 export class FacultyController {
   constructor(private readonly service: FacultyService) {}
@@ -43,8 +46,8 @@ export class FacultyController {
   @ApiQuery({ name: 'isActive', required: false, type: Boolean, description: 'Filter by active status' })
   @ApiQuery({ name: 'sortBy', required: false, type: String, description: 'Sort field (code, name, createdAt)' })
   @ApiQuery({ name: 'sortOrder', required: false, type: String, description: 'Sort direction (asc, desc)' })
-  async findAll(@Query() query: QueryFacultyDto) {
-    return this.service.findAll(query);
+  async findAll(@TenantId() tenantId: string, @Query() query: QueryFacultyDto) {
+    return this.service.findAll(tenantId, query);
   }
 
   @Get(':id')
@@ -58,8 +61,11 @@ export class FacultyController {
     status: HttpStatus.NOT_FOUND,
     description: 'Faculty not found',
   })
-  async findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.service.findOne(id);
+  async findOne(
+    @TenantId() tenantId: string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.service.findOne(tenantId, id);
   }
 
   @Post()
@@ -71,14 +77,14 @@ export class FacultyController {
   })
   @ApiResponse({
     status: HttpStatus.CONFLICT,
-    description: 'Faculty code already exists',
+    description: 'Faculty code already exists in this tenant',
   })
   @ApiResponse({
     status: HttpStatus.BAD_REQUEST,
     description: 'Validation error',
   })
-  async create(@Body() data: CreateFacultyDto) {
-    return this.service.create(data);
+  async create(@TenantId() tenantId: string, @Body() data: CreateFacultyDto) {
+    return this.service.create(tenantId, data);
   }
 
   @Put(':id')
@@ -94,13 +100,14 @@ export class FacultyController {
   })
   @ApiResponse({
     status: HttpStatus.CONFLICT,
-    description: 'Faculty code already exists',
+    description: 'Faculty code already exists in this tenant',
   })
   async update(
+    @TenantId() tenantId: string,
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
     @Body() data: UpdateFacultyDto,
   ) {
-    return this.service.update(id, data);
+    return this.service.update(tenantId, id, data);
   }
 
   @Delete(':id')
@@ -114,7 +121,10 @@ export class FacultyController {
     status: HttpStatus.NOT_FOUND,
     description: 'Faculty not found',
   })
-  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
-    return this.service.remove(id);
+  async remove(
+    @TenantId() tenantId: string,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+  ) {
+    return this.service.remove(tenantId, id);
   }
 }
