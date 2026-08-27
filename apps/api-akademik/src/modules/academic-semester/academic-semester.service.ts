@@ -75,6 +75,9 @@ export class AcademicSemesterService {
     }
 
     const item = await this.repository.update(tenantId, id, data);
+    if (!item) {
+      throw new NotFoundException(`Academic Semester with id '${id}' not found`);
+    }
     this.logger.log(`[Tenant ${tenantId}] Academic Semester updated: ${item.id}`);
     return item;
   }
@@ -88,12 +91,15 @@ export class AcademicSemesterService {
     }
 
     const item = await this.repository.remove(tenantId, id);
+    if (!item) {
+      throw new NotFoundException(`Academic Semester with id '${id}' not found`);
+    }
     this.logger.log(`[Tenant ${tenantId}] Academic Semester deleted: ${item.id}`);
     return item;
   }
 
   async setCurrent(tenantId: string, id: string) {
-    this.logger.log(`[Tenant ${tenantId}] Setting Academic Semester as current: ${id}`);
+    this.logger.log(`[Tenant ${tenantId}] Setting Academic Semester id: ${id} as current`);
 
     const existing = await this.repository.findById(tenantId, id);
     if (!existing) {
@@ -101,6 +107,9 @@ export class AcademicSemesterService {
     }
 
     const item = await this.repository.setCurrent(tenantId, id);
+    if (!item) {
+      throw new NotFoundException(`Academic Semester with id '${id}' not found`);
+    }
     this.logger.log(`[Tenant ${tenantId}] Academic Semester set as current: ${item.id}`);
     return item;
   }

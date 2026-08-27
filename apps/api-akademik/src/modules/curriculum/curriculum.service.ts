@@ -87,6 +87,9 @@ export class CurriculumService {
     }
 
     const item = await this.repository.update(tenantId, id, data);
+    if (!item) {
+      throw new NotFoundException(`Curriculum with id '${id}' not found`);
+    }
     this.logger.log(`[Tenant ${tenantId}] Curriculum updated: ${item.id}`);
     return item;
   }
@@ -100,6 +103,9 @@ export class CurriculumService {
     }
 
     const item = await this.repository.remove(tenantId, id);
+    if (!item) {
+      throw new NotFoundException(`Curriculum with id '${id}' not found`);
+    }
     this.logger.log(`[Tenant ${tenantId}] Curriculum deleted: ${item.id}`);
     return item;
   }

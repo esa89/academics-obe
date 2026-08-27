@@ -103,6 +103,13 @@ export class TenantService {
       throw new ConflictException('Primary default tenant cannot be deleted');
     }
 
+    const hasRecords = await this.repository.hasAcademicRecords(id);
+    if (hasRecords) {
+      throw new ConflictException(
+        'Cannot delete tenant with existing academic records. Deactivate or suspend the tenant instead.',
+      );
+    }
+
     const item = await this.repository.remove(id);
     this.logger.log(`Tenant deleted: ${item.id}`);
     return item;

@@ -11,6 +11,7 @@ import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../database/prisma.service';
 import { IS_PUBLIC_KEY, IS_PLATFORM_KEY } from '../decorators/public.decorator';
 import { TenantContext, TenantInfo } from '../tenant/tenant-context.interface';
+import { extractAndVerifyUserFromRequest } from '../tenant/jwt-parser.util';
 
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -41,21 +42,17 @@ export class TenantGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    // Extract tenant identifier from headers or cookies
-    const tenantHeader = (
-      request.headers['x-tenant-id'] ||
-      request.headers['x-tenant-slug'] ||
-      request.headers['x-tenant'] ||
-      ''
-    ).toString().trim();
+    // Extract authenticated user identity strictly from verified token / session
+    const authUser = extractAndVerifyUserFromRequest(request);
 
-    // Extract user auth info from headers (mock/gateway forwarded auth headers)
-    const userTenantId = (request.headers['x-user-tenant-id'] || '').toString().trim();
-    const userRole = (request.headers['x-user-role'] || '').toString().trim();
-    const userId = (request.headers['x-user-id'] || '').toString().trim();
-
-    // If endpoint is platform-only, it doesn't require a tenant header, but requires platform auth
+    // If endpoint is platform-only, it requires PLATFORM_ADMIN credentials
     if (isPlatformOnly) {
+      if (!authUser || !authUser.isPlatformAdmin) {
+        throw new ForbiddenException(
+          'Platform admin privileges required. Access is restricted to authenticated platform administrators.',
+        );
+      }
+
       request.tenantContext = {
         tenant: {
           id: '',
@@ -65,32 +62,37 @@ export class TenantGuard implements CanActivate {
           status: 'ACTIVE',
         },
         tenantId: '',
-        userTenantId: userTenantId || undefined,
-        userRole: userRole || undefined,
-        userId: userId || undefined,
+        userTenantId: authUser.userTenantId,
+        userRole: 'PLATFORM_ADMIN',
+        userId: authUser.userId,
         isPlatformAdmin: true,
       } satisfies TenantContext;
       return true;
     }
 
-    if (!tenantHeader) {
-      // Check if user has tenantId in token claims
-      if (userTenantId) {
-        return this.resolveAndAttachTenant(request, userTenantId, { userTenantId, userRole, userId });
-      }
+    // Extract tenant selector from client headers (X-Tenant-Id or X-Tenant-Slug)
+    const tenantHeader = (
+      request.headers['x-tenant-id'] ||
+      request.headers['x-tenant-slug'] ||
+      request.headers['x-tenant'] ||
+      ''
+    ).toString().trim();
 
+    const targetIdentifier = tenantHeader || authUser?.userTenantId || authUser?.userTenantSlug;
+
+    if (!targetIdentifier) {
       throw new UnauthorizedException(
         'Tenant context is required. Please provide X-Tenant-Id or X-Tenant-Slug header.',
       );
     }
 
-    return this.resolveAndAttachTenant(request, tenantHeader, { userTenantId, userRole, userId });
+    return this.resolveAndAttachTenant(request, targetIdentifier, authUser);
   }
 
   private async resolveAndAttachTenant(
     request: any,
     identifier: string,
-    userInfo: { userTenantId?: string; userRole?: string; userId?: string },
+    authUser: ReturnType<typeof extractAndVerifyUserFromRequest>,
   ): Promise<boolean> {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
 
@@ -121,22 +123,25 @@ export class TenantGuard implements CanActivate {
       throw new ForbiddenException(`Tenant '${tenant.name}' is currently ${tenant.status.toLowerCase()}`);
     }
 
-    // Cross-tenant barrier: if authenticated user belongs to a different tenant and is not PLATFORM_ADMIN
-    if (
-      userInfo.userTenantId &&
-      userInfo.userRole !== 'PLATFORM_ADMIN' &&
-      userInfo.userTenantId !== tenant.id
-    ) {
-      throw new ForbiddenException('Cross-tenant access forbidden. You cannot access another university data.');
+    // Cross-tenant boundary check:
+    // If user is authenticated with a tenant-bound identity and is NOT a PLATFORM_ADMIN,
+    // they MUST NOT access data of another tenant!
+    if (authUser && !authUser.isPlatformAdmin) {
+      if (authUser.userTenantId && authUser.userTenantId !== tenant.id) {
+        throw new ForbiddenException('Cross-tenant access forbidden. You cannot access another university data.');
+      }
+      if (authUser.userTenantSlug && authUser.userTenantSlug !== tenant.slug) {
+        throw new ForbiddenException('Cross-tenant access forbidden. You cannot access another university data.');
+      }
     }
 
     const tenantContext: TenantContext = {
       tenant,
       tenantId: tenant.id,
-      userTenantId: userInfo.userTenantId,
-      userRole: userInfo.userRole,
-      userId: userInfo.userId,
-      isPlatformAdmin: userInfo.userRole === 'PLATFORM_ADMIN',
+      userTenantId: authUser?.userTenantId,
+      userRole: authUser?.roles[0],
+      userId: authUser?.userId,
+      isPlatformAdmin: authUser?.isPlatformAdmin ?? false,
     };
 
     request.tenantContext = tenantContext;

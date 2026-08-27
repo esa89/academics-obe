@@ -125,6 +125,9 @@ export class StudentRepository {
   }
 
   async update(tenantId: string, id: string, data: UpdateStudentDto) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     const u: Prisma.StudentUpdateInput = {};
     if (data.nim !== undefined)           u.nim = data.nim;
     if (data.name !== undefined)          u.name = data.name;
@@ -147,6 +150,9 @@ export class StudentRepository {
   }
 
   async remove(tenantId: string, id: string) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     return this.prisma.student.delete({ where: { id } });
   }
 

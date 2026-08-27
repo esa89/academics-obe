@@ -209,7 +209,10 @@ export class AcademicClassRepository {
     return this.mapToDetailResponse(item);
   }
 
-  async update(tenantId: string, id: string, data: UpdateAcademicClassDto): Promise<AcademicClassDetailMapped> {
+  async update(tenantId: string, id: string, data: UpdateAcademicClassDto): Promise<AcademicClassDetailMapped | null> {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     const updateData: Prisma.AcademicClassUpdateInput = {};
 
     if (data.semesterId !== undefined) updateData.semester = { connect: { id: data.semesterId } };
@@ -342,6 +345,9 @@ export class AcademicClassRepository {
   }
 
   async remove(tenantId: string, id: string) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     return this.prisma.academicClass.delete({ where: { id } });
   }
 

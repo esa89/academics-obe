@@ -59,7 +59,7 @@ export class TenantController {
   @Roles('PLATFORM_ADMIN')
   @ApiOperation({ summary: 'Get Tenant by ID (Platform Admin only)' })
   @ApiResponse({ status: HttpStatus.OK, type: TenantResponseDto })
-  async findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+  async findOne(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.service.findOne(id);
   }
 
@@ -78,7 +78,7 @@ export class TenantController {
   @ApiOperation({ summary: 'Update Tenant metadata (Platform Admin only)' })
   @ApiResponse({ status: HttpStatus.OK, type: TenantResponseDto })
   async update(
-    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() data: UpdateTenantDto,
   ) {
     return this.service.update(id, data);
@@ -90,7 +90,7 @@ export class TenantController {
   @ApiOperation({ summary: 'Update Tenant active status (Platform Admin only)' })
   @ApiResponse({ status: HttpStatus.OK, type: TenantResponseDto })
   async updateStatus(
-    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() data: UpdateTenantStatusDto,
   ) {
     return this.service.updateStatus(id, data);
@@ -101,7 +101,7 @@ export class TenantController {
   @Roles('PLATFORM_ADMIN')
   @ApiOperation({ summary: 'Delete Tenant (Platform Admin only)' })
   @ApiResponse({ status: HttpStatus.OK, type: TenantResponseDto })
-  async remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
+  async remove(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.service.remove(id);
   }
 }

@@ -136,6 +136,9 @@ export class LecturerRepository {
   }
 
   async update(tenantId: string, id: string, data: UpdateLecturerDto) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     const updateData: Prisma.LecturerUpdateInput = {};
     if (data.nidn !== undefined) updateData.nidn = data.nidn;
     if (data.nrk !== undefined) updateData.nrk = data.nrk;
@@ -162,6 +165,9 @@ export class LecturerRepository {
     id: string,
     info: { identityUserId: string; authentikStatus: AuthentikStatus },
   ) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     return this.prisma.lecturer.update({
       where: { id },
       data: {
@@ -172,10 +178,16 @@ export class LecturerRepository {
   }
 
   async updateAuthentikStatus(tenantId: string, id: string, authentikStatus: AuthentikStatus) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     return this.prisma.lecturer.update({ where: { id }, data: { authentikStatus } });
   }
 
   async remove(tenantId: string, id: string) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     return this.prisma.lecturer.delete({ where: { id } });
   }
 

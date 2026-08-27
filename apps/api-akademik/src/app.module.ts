@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import appConfig from './config/app.config';
 import { DatabaseModule } from './database/database.module';
 import { TenantModule } from './modules/tenant/tenant.module';
@@ -14,6 +14,7 @@ import { StudentModule } from './modules/student/student.module';
 import { AcademicClassModule } from './modules/academic-class/academic-class.module';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 
 @Module({
   imports: [
@@ -41,6 +42,10 @@ import { RolesGuard } from './common/guards/roles.guard';
     {
       provide: APP_GUARD,
       useClass: RolesGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantContextInterceptor,
     },
   ],
 })

@@ -8,6 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { extractAndVerifyUserFromRequest } from '../tenant/jwt-parser.util';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -36,23 +37,26 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    const userRole = request.headers['x-user-role'] || request.user?.role;
+    const authUser = extractAndVerifyUserFromRequest(request);
 
-    if (!userRole) {
+    if (!authUser) {
       throw new ForbiddenException(
-        `Access denied. Required roles: ${requiredRoles.join(', ')}`,
+        `Authentication required. Roles required: ${requiredRoles.join(', ')}`,
       );
     }
 
-    // PLATFORM_ADMIN has access to everything
-    if (userRole === 'PLATFORM_ADMIN') {
+    // PLATFORM_ADMIN has universal access
+    if (authUser.isPlatformAdmin || authUser.roles.includes('PLATFORM_ADMIN')) {
       return true;
     }
 
-    const hasRole = requiredRoles.includes(userRole);
+    const hasRole = requiredRoles.some((r) =>
+      authUser.roles.some((userRole) => userRole.toLowerCase() === r.toLowerCase()),
+    );
+
     if (!hasRole) {
       throw new ForbiddenException(
-        `Insufficient role privileges. Required: ${requiredRoles.join(', ')}, actual: ${userRole}`,
+        `Insufficient role privileges. Required: ${requiredRoles.join(', ')}, actual: ${authUser.roles.join(', ')}`,
       );
     }
 

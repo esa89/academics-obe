@@ -101,10 +101,11 @@ enum AdmissionPath {
 enum Agama {
   ISLAM
   KRISTEN_PROTESTAN
-  KRISTEN_KATOLIK
+  KATOLIK
   HINDU
   BUDDHA
-  KONGHUCU
+  KHONGHUCU
+  LAINNYA
 }
 
 model Faculty {
@@ -117,7 +118,7 @@ model Faculty {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   studyPrograms StudyProgram[]
   curriculums   Curriculum[]
   courses       Course[]
@@ -128,11 +129,12 @@ model Faculty {
   @@index([tenantId])
   @@index([code])
   @@index([name])
+  @@index([isActive])
   @@map("faculties")
 }
 
 model StudyProgram {
-  id            String      @id @default(uuid())
+  id            String   @id @default(uuid())
   tenantId      String
   facultyId     String
   code          String
@@ -140,27 +142,28 @@ model StudyProgram {
   degree        Degree
   accreditation String?
   description   String?
-  isActive      Boolean     @default(true)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  faculty     Faculty      @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  faculty     Faculty      @relation(fields: [facultyId], references: [id])
   curriculums Curriculum[]
   lecturers   Lecturer[]
   students    Student[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
+  @@index([facultyId])
   @@index([code])
   @@index([name])
-  @@index([facultyId])
   @@index([degree])
+  @@index([isActive])
   @@map("study_programs")
 }
 
 model Curriculum {
-  id             String        @id @default(uuid())
+  id             String   @id @default(uuid())
   tenantId       String
   studyProgramId String?
   facultyId      String?
@@ -168,25 +171,24 @@ model Curriculum {
   name           String
   year           Int
   description    String?
-  totalSemester  Int
-  totalSks       Int
-  isActive       Boolean       @default(true)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  totalSemester  Int      @default(8)
+  totalSks       Int      @default(144)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  studyProgram StudyProgram? @relation(fields: [studyProgramId], references: [id], onDelete: Cascade)
-  faculty      Faculty?      @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  studyProgram StudyProgram? @relation(fields: [studyProgramId], references: [id])
+  faculty      Faculty?      @relation(fields: [facultyId], references: [id])
   courses      Course[]
   students     Student[]
 
   @@index([tenantId])
-  @@index([tenantId, code])
-  @@index([code])
-  @@index([name])
-  @@index([year])
   @@index([studyProgramId])
   @@index([facultyId])
+  @@index([code])
+  @@index([year])
+  @@index([isActive])
   @@map("curriculums")
 }
 
@@ -204,18 +206,19 @@ model Course {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  curriculum      Curriculum?     @relation(fields: [curriculumId], references: [id], onDelete: Cascade)
-  faculty         Faculty?        @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  curriculum      Curriculum?     @relation(fields: [curriculumId], references: [id])
+  faculty         Faculty?        @relation(fields: [facultyId], references: [id])
   academicClasses AcademicClass[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
+  @@index([curriculumId])
+  @@index([facultyId])
   @@index([code])
   @@index([name])
   @@index([semester])
-  @@index([curriculumId])
-  @@index([facultyId])
+  @@index([isActive])
   @@map("courses")
 }
 
@@ -240,10 +243,10 @@ model Lecturer {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
-  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  faculty        Faculty         @relation(fields: [facultyId], references: [id])
-  studyProgram   StudyProgram    @relation(fields: [studyProgramId], references: [id])
-  classLecturers ClassLecturer[]
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  faculty         Faculty         @relation(fields: [facultyId], references: [id])
+  studyProgram    StudyProgram    @relation(fields: [studyProgramId], references: [id])
+  academicClasses ClassLecturer[]
 
   @@unique([tenantId, nidn])
   @@unique([tenantId, nrk])
@@ -252,50 +255,51 @@ model Lecturer {
   @@index([tenantId])
   @@index([nidn])
   @@index([nrk])
+  @@index([name])
   @@index([email])
-  @@index([identityUsername])
   @@index([facultyId])
   @@index([studyProgramId])
-  @@index([lastEducation])
-  @@index([academicPosition])
   @@index([isActive])
+  @@index([identityUserId])
+  @@index([identityUsername])
   @@index([authentikStatus])
   @@map("lecturers")
 }
 
 model Student {
-  id                 String            @id @default(uuid())
+  id                 String        @id @default(uuid())
   tenantId           String
   nim                String
   name               String
   birthPlace         String?
-  birthDate          DateTime?         @db.Date
+  birthDate          DateTime?     @db.Date
   gender             Gender
+  agama              Agama?
   email              String?
   phoneNumber        String?
-  agama              Agama?
   facultyId          String
   studyProgramId     String
   curriculumId       String?
   academicSemesterId String?
-  admissionPath      AdmissionPath     @default(REGULER)
+  admissionPath      AdmissionPath @default(REGULER)
   entryYear          Int
-  studentStatus      StudentStatus     @default(AKTIF)
-  isActive           Boolean           @default(true)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  studentStatus      StudentStatus @default(AKTIF)
+  isActive           Boolean       @default(true)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
-  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   faculty          Faculty           @relation(fields: [facultyId], references: [id])
   studyProgram     StudyProgram      @relation(fields: [studyProgramId], references: [id])
   curriculum       Curriculum?       @relation(fields: [curriculumId], references: [id])
   academicSemester AcademicSemester? @relation(fields: [academicSemesterId], references: [id])
-  classStudents    ClassStudent[]
+  academicClasses  ClassStudent[]
 
   @@unique([tenantId, nim])
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([nim])
+  @@index([name])
   @@index([email])
   @@index([facultyId])
   @@index([studyProgramId])
@@ -327,7 +331,7 @@ model AcademicSemester {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   students        Student[]
   academicClasses AcademicClass[]
 
@@ -352,7 +356,7 @@ model AcademicClass {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   semester  AcademicSemester @relation(fields: [semesterId], references: [id])
   course    Course           @relation(fields: [courseId], references: [id])
   lecturers ClassLecturer[]
