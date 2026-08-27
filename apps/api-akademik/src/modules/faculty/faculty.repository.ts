@@ -100,8 +100,10 @@ export class FacultyRepository {
   }
 
   async update(tenantId: string, id: string, data: UpdateFacultyDto) {
-    const updateData: Prisma.FacultyUpdateInput = {};
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
 
+    const updateData: Prisma.FacultyUpdateInput = {};
     if (data.code !== undefined) updateData.code = data.code;
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
@@ -114,6 +116,9 @@ export class FacultyRepository {
   }
 
   async remove(tenantId: string, id: string) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     return this.prisma.faculty.delete({
       where: { id },
     });

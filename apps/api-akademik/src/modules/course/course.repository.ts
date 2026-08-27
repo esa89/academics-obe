@@ -105,6 +105,9 @@ export class CourseRepository {
   }
 
   async update(tenantId: string, id: string, data: UpdateCourseDto) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     const updateData: Prisma.CourseUpdateInput = {};
 
     if (data.curriculumId !== undefined) {
@@ -132,6 +135,9 @@ export class CourseRepository {
   }
 
   async remove(tenantId: string, id: string) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     return this.prisma.course.delete({ where: { id } });
   }
 

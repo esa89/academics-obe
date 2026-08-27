@@ -122,6 +122,9 @@ export class AcademicSemesterRepository {
   }
 
   async update(tenantId: string, id: string, data: UpdateAcademicSemesterDto) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     const updateData: Prisma.AcademicSemesterUpdateInput = {};
 
     if (data.code !== undefined) updateData.code = data.code;
@@ -140,12 +143,18 @@ export class AcademicSemesterRepository {
   }
 
   async remove(tenantId: string, id: string) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     return this.prisma.academicSemester.delete({
       where: { id },
     });
   }
 
   async setCurrent(tenantId: string, id: string) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     return this.prisma.$transaction(async (tx) => {
       await tx.academicSemester.updateMany({
         where: { tenantId, isCurrent: true },

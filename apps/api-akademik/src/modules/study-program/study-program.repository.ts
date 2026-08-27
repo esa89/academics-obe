@@ -119,6 +119,9 @@ export class StudyProgramRepository {
   }
 
   async update(tenantId: string, id: string, data: UpdateStudyProgramDto) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     const updateData: Prisma.StudyProgramUpdateInput = {};
 
     if (data.facultyId !== undefined) updateData.faculty = { connect: { id: data.facultyId } };
@@ -141,6 +144,9 @@ export class StudyProgramRepository {
   }
 
   async remove(tenantId: string, id: string) {
+    const existing = await this.findById(tenantId, id);
+    if (!existing) return null;
+
     return this.prisma.studyProgram.delete({
       where: { id },
     });

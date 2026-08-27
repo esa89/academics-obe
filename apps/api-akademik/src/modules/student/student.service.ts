@@ -127,6 +127,9 @@ export class StudentService {
     }
 
     const item = await this.repository.update(tenantId, id, data);
+    if (!item) {
+      throw new NotFoundException(`Student with id '${id}' not found`);
+    }
     this.logger.log(`[Tenant ${tenantId}] Student updated: ${item.id}`);
     return item;
   }
@@ -140,6 +143,9 @@ export class StudentService {
     }
 
     const item = await this.repository.remove(tenantId, id);
+    if (!item) {
+      throw new NotFoundException(`Student with id '${id}' not found`);
+    }
     this.logger.log(`[Tenant ${tenantId}] Student deleted: ${item.id}`);
     return item;
   }

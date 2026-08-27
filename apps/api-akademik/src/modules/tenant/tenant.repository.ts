@@ -130,6 +130,16 @@ export class TenantRepository {
     return count > 0;
   }
 
+  async hasAcademicRecords(tenantId: string): Promise<boolean> {
+    const [facultyCount, studentCount, lecturerCount, classCount] = await Promise.all([
+      this.prisma.faculty.count({ where: { tenantId } }),
+      this.prisma.student.count({ where: { tenantId } }),
+      this.prisma.lecturer.count({ where: { tenantId } }),
+      this.prisma.academicClass.count({ where: { tenantId } }),
+    ]);
+    return facultyCount > 0 || studentCount > 0 || lecturerCount > 0 || classCount > 0;
+  }
+
   async existsBySlug(slug: string, excludeId?: string): Promise<boolean> {
     const count = await this.prisma.tenant.count({
       where: {

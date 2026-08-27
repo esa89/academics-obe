@@ -143,6 +143,9 @@ export class AcademicClassService {
     }
 
     const item = await this.repository.update(tenantId, id, data);
+    if (!item) {
+      throw new NotFoundException(`Academic Class with id '${id}' not found`);
+    }
     this.logger.log(`[Tenant ${tenantId}] Academic Class updated: ${item.id}`);
     return item;
   }
@@ -156,6 +159,9 @@ export class AcademicClassService {
     }
 
     const item = await this.repository.remove(tenantId, id);
+    if (!item) {
+      throw new NotFoundException(`Academic Class with id '${id}' not found`);
+    }
     this.logger.log(`[Tenant ${tenantId}] Academic Class deleted: ${item.id}`);
     return item;
   }

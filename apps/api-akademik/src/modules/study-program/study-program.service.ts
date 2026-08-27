@@ -81,6 +81,9 @@ export class StudyProgramService {
     }
 
     const item = await this.repository.update(tenantId, id, data);
+    if (!item) {
+      throw new NotFoundException(`Study Program with id '${id}' not found`);
+    }
     this.logger.log(`[Tenant ${tenantId}] StudyProgram updated: ${item.id}`);
     return item;
   }
@@ -94,6 +97,9 @@ export class StudyProgramService {
     }
 
     const item = await this.repository.remove(tenantId, id);
+    if (!item) {
+      throw new NotFoundException(`Study Program with id '${id}' not found`);
+    }
     this.logger.log(`[Tenant ${tenantId}] StudyProgram deleted: ${item.id}`);
     return item;
   }
